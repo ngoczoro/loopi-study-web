@@ -1,38 +1,11 @@
-// import { useAppStore } from "@/lib/store";
+import { useAppStore } from "@/lib/store";
 import { useMemo } from "react";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const HOURS = Array.from({ length: 25 }, (_, i) => i); // 0-24
 
-const sessions = [
-  {
-    id: "1",
-    day: 0,
-    start: 9,
-    duration: 2,
-    title: "Math",
-    color: "340 82% 59%",
-  },
-  {
-    id: "2",
-    day: 2,
-    start: 14,
-    duration: 1.5,
-    title: "React",
-    color: "210 80% 60%",
-  },
-  {
-    id: "3",
-    day: 4,
-    start: 18,
-    duration: 0.5,
-    title: "React",
-    color: "210 80% 60%",
-  },
-];
-
 export default function WeeklyTimeline() {
-  //   const sessions = useAppStore((s) => s.sessions);
+  const sessions = useAppStore((s) => s.sessions);
 
   const totalHours = useMemo(
     () => sessions.reduce((sum, s) => sum + s.duration, 0),

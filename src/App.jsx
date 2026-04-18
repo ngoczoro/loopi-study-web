@@ -14,8 +14,7 @@ function App() {
       <Input placeholder="Enter your name..." />
       <Badge variant="destructive">Destructive</Badge>
       <Calendar />
-    </>
+      </>
   );
 }
-
 export default App;
