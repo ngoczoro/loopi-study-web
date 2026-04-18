@@ -1,5 +1,15 @@
 import { create } from "zustand";
 
+/**
+ * @typedef {{
+ *  question: string,
+ *  options: string[],
+ *  correctIndex: number,
+ *  explanation?: string,
+ *  difficulty?: "easy" | "medium" | "hard"
+ * }} QuizQuestion
+ */
+
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 export const useAppStore = create((set) => ({
