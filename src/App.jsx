@@ -6,9 +6,11 @@ import "./App.css";
 
 function App() {
   return (
-  <Route>
-    <Dashboard />
-  </Route>
+    <div className="min-h-screen bg-background text-foreground">
+      <Dashboard />
+      {/* <Progress /> */}
+      {/* <Notes /> */}
+    </div>
   );
 }
 export default App;
