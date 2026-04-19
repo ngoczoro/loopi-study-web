@@ -10,6 +10,16 @@ import { create } from "zustand";
  * }} QuizQuestion
  */
 
+/**
+ * @typedef {{
+ *  id: string,
+ *  title: string,
+ *  subjectId: string | null,
+ *  questions: QuizQuestion[],
+ *  createdAt: string
+ * }} Quiz
+ */
+
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 export const useAppStore = create((set) => ({
@@ -67,5 +77,24 @@ export const useAppStore = create((set) => ({
         ...state.sessions,
         ...newSessions.map((s) => ({ ...s, id: uid() })),
       ],
+    })),
+  // ===== QUIZ (THÊM CHO QuizList) =====
+  quizzes: [],
+
+  addQuiz: (q) =>
+    set((state) => ({
+      quizzes: [
+        ...state.quizzes,
+        {
+          ...q,
+          id: uid(),
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    })),
+
+  deleteQuiz: (id) =>
+    set((state) => ({
+      quizzes: state.quizzes.filter((q) => q.id !== id),
     })),
 }));
