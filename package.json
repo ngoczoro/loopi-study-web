@@ -10,24 +10,21 @@
     "preview": "vite preview"
   },
   "dependencies": {
-<<<<<<< HEAD
+    "@radix-ui/react-alert-dialog": "^1.1.15",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-popover": "^1.1.15",
+    "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-=======
     "framer-motion": "^12.38.0",
->>>>>>> 9f7e46e4742fc5b054de9ea5399738c8b4a11ff2
     "lucide-react": "^1.8.0",
     "react": "^19.2.4",
     "react-day-picker": "^9.14.0",
     "react-dom": "^19.2.4",
-<<<<<<< HEAD
     "tailwind-merge": "^3.5.0",
-    "tailwindcss-animate": "^1.0.7"
-=======
     "tailwindcss-animate": "^1.0.7",
     "zustand": "^5.0.12"
->>>>>>> 9f7e46e4742fc5b054de9ea5399738c8b4a11ff2
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
