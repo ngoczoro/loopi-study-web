@@ -6,6 +6,7 @@ import Subjects from "./pages/user/Subjects";
 import { Routes, Route } from "react-router-dom";
 import { AppSidebar } from "./components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "./components/sidebar";
+import Planner from "./pages/user/Planner";
 import "./App.css";
 
 function App() {
@@ -26,6 +27,7 @@ function App() {
               <Route path="/subjects" element={<Subjects />} />
               <Route path="/progress" element={<Progress />} />
               <Route path="/notes" element={<Notes />} />
+              <Route path="/planner" element={<Planner />} />
               
               {/* route mac dinh */}
               <Route path="*" element={<Dashboard />} />
