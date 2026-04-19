@@ -1,0 +1,474 @@
+import { useState } from "react";
+import { BookOpen, Plus, Star, Calendar, Trash2, X, FileText, Upload, Link2, PenLine, Eye, Edit3, CalendarIcon } from "lucide-react";
+import { format, addDays, startOfDay } from "date-fns";
+import { motion, AnimatePresence } from "framer-motion";
+import { useAppStore } from "../../lib/store";
+import { cn } from "../../lib/utils";
+import { Button } from "../../components/button";
+import { Calendar as CalendarPicker } from "../../components/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "../../components/popover";
+import { toast } from "sonner";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
+} from "../../components/sheet";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "../../components/alert-dialog";
+
+const typeIcons = { note: FileText, file: Upload, link: Link2 };
+
+export default function Subjects() {
+  const { subjects, documents, addSubject, deleteSubject, addDocument, deleteDocument, updateDocument } = useAppStore();
+  
+  const [selectedSubject, setSelectedSubject] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [deleteId, setDeleteId] = useState(null);
+  const [deleteDocId, setDeleteDocId] = useState(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const [activeTab, setActiveTab] = useState("note");
+  
+  const [newForm, setNewForm] = useState({ 
+    name: "", 
+    credits: "3", 
+    difficulty: "Medium", 
+    examDate: undefined, 
+    requiredHoursPerWeek: "", 
+    priority: "medium" 
+  });
+  
+  const [examDateError, setExamDateError] = useState("");
+  const [uploadForm, setUploadForm] = useState({ title: "", subjectId: "", content: "", url: "" });
+  const [viewDoc, setViewDoc] = useState(null);
+  const [editDoc, setEditDoc] = useState(null);
+  const [editForm, setEditForm] = useState({ title: "", content: "", subjectId: "" });
+
+  const getSubjectName = (subjectId) => {
+    if (!subjectId) return "General";
+    return subjects.find((s) => s.id === subjectId)?.name || "Unknown";
+  };
+
+  const tomorrow = addDays(startOfDay(new Date()), 1);
+
+  const handleAdd = () => {
+    if (!newForm.name.trim()) return;
+    if (!newForm.examDate || newForm.examDate <= new Date()) {
+      setExamDateError("Please select a future date");
+      return;
+    }
+    setExamDateError("");
+    const colors = ["340 82% 59%", "210 80% 60%", "142 45% 55%", "35 90% 60%", "280 60% 65%"];
+    const formattedDate = format(newForm.examDate, "MMM dd");
+    
+    addSubject({ 
+      name: newForm.name, 
+      credits: parseInt(newForm.credits), 
+      difficulty: newForm.difficulty, 
+      examDate: formattedDate, 
+      color: colors[subjects.length % colors.length], 
+      progress: 0, 
+      requiredHoursPerWeek: newForm.requiredHoursPerWeek ? parseFloat(newForm.requiredHoursPerWeek) : undefined, 
+      priority: newForm.priority 
+    });
+    
+    setShowAdd(false);
+    setNewForm({ name: "", credits: "3", difficulty: "Medium", examDate: undefined, requiredHoursPerWeek: "", priority: "medium" });
+    toast.success("Subject added successfully! 📚");
+  };
+
+  const handleDelete = () => {
+    if (deleteId) { 
+      deleteSubject(deleteId); 
+      if (selectedSubject?.id === deleteId) setSelectedSubject(null); 
+      setDeleteId(null); 
+      toast.success("Subject deleted"); 
+    }
+  };
+
+  const handleDeleteDoc = () => {
+    if (deleteDocId) { 
+      deleteDocument(deleteDocId); 
+      setDeleteDocId(null); 
+      toast.success("Document deleted"); 
+    }
+  };
+
+  const handleUpload = () => {
+    if (!uploadForm.title.trim()) { toast.error("Please add a title"); return; }
+    const subId = uploadForm.subjectId || selectedSubject?.id || null;
+    
+    addDocument({ 
+      title: uploadForm.title, 
+      type: activeTab, 
+      subjectId: subId, 
+      date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }), 
+      content: activeTab === "note" ? uploadForm.content : activeTab === "link" ? uploadForm.url : undefined, 
+      ownerId: "u1", 
+      ownerName: "Student", 
+      createdAt: new Date().toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }) 
+    });
+    
+    setShowUpload(false);
+    setUploadForm({ title: "", subjectId: "", content: "", url: "" });
+    setActiveTab("note");
+    toast.success(activeTab === "file" ? "File uploaded! 📁" : activeTab === "note" ? "Note created! 📝" : "Link added! 🔗");
+  };
+
+  const openEdit = (doc) => {
+    setEditDoc(doc);
+    setEditForm({ title: doc.title, content: doc.content || "", subjectId: doc.subjectId || "" });
+  };
+
+  const handleEdit = () => {
+    if (!editDoc || !editForm.title.trim()) { toast.error("Title required"); return; }
+    updateDocument(editDoc.id, { title: editForm.title, content: editForm.content || undefined, subjectId: editForm.subjectId || null });
+    setEditDoc(null);
+    toast.success("Document updated! ✅");
+  };
+
+  const subjectDocs = selectedSubject ? documents.filter((d) => d.subjectId === selectedSubject.id) : [];
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-foreground">My Subjects</h1>
+          <p className="text-sm text-muted-foreground">Manage your courses and track progress</p>
+        </div>
+        <button onClick={() => setShowAdd(true)}
+          className="inline-flex items-center gap-2 h-10 px-5 rounded-full bg-primary text-primary-foreground font-medium text-sm shadow-soft-md hover:scale-[1.02] transition-transform">
+          <Plus className="h-4 w-4" strokeWidth={1.5} /> Add Subject
+        </button>
+      </div>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {subjects.map((subject, i) => (
+          <motion.div key={subject.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+            className="bg-card rounded-2xl p-5 shadow-soft hover:shadow-soft-md transition-shadow cursor-pointer group relative"
+            onClick={() => setSelectedSubject(subject)}>
+            <div className="flex items-start justify-between mb-3">
+              <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `hsl(${subject.color} / 0.15)` }}>
+                <BookOpen className="h-5 w-5" style={{ color: `hsl(${subject.color})` }} strokeWidth={1.5} />
+              </div>
+              <button onClick={(e) => { e.stopPropagation(); setDeleteId(subject.id); }}
+                className="h-7 w-7 rounded-lg bg-destructive/10 text-destructive flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/20 shrink-0">
+                <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+              </button>
+            </div>
+            <h3 className="text-base font-semibold text-foreground mb-1 group-hover:text-primary transition-colors">{subject.name}</h3>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground mb-2">
+              <span className="flex items-center gap-1"><Star className="h-3 w-3" strokeWidth={1.5} />{subject.credits} credits</span>
+              <span className="flex items-center gap-1"><Calendar className="h-3 w-3" strokeWidth={1.5} />{subject.examDate}</span>
+            </div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className={`text-[10px] uppercase tracking-widest font-bold px-2 py-0.5 rounded-full ${subject.difficulty === "Hard" ? "bg-destructive/10 text-destructive" : subject.difficulty === "Medium" ? "bg-warning/20 text-foreground" : "bg-accent/20 text-accent-foreground"}`}>{subject.difficulty}</span>
+              {subject.requiredHoursPerWeek && (
+                <span className="text-[10px] text-muted-foreground">{subject.requiredHoursPerWeek}h/week</span>
+              )}
+            </div>
+            <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+              <div className="h-full rounded-full bg-primary/70 transition-all" style={{ width: `${subject.progress}%` }} />
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1.5">{subject.progress}% complete</p>
+          </motion.div>
+        ))}
+      </div>
+
+      <Sheet open={!!selectedSubject} onOpenChange={(o) => !o && setSelectedSubject(null)}>
+        <SheetContent className="overflow-auto">
+          {selectedSubject && (
+            <>
+              <SheetHeader>
+                <SheetTitle className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: `hsl(${selectedSubject.color} / 0.15)` }}>
+                    <BookOpen className="h-4 w-4" style={{ color: `hsl(${selectedSubject.color})` }} strokeWidth={1.5} />
+                  </div>
+                  {selectedSubject.name}
+                </SheetTitle>
+                <SheetDescription>Subject details and documents</SheetDescription>
+              </SheetHeader>
+              <div className="mt-6 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: "Credits", value: selectedSubject.credits },
+                    { label: "Difficulty", value: selectedSubject.difficulty },
+                    { label: "Exam Date", value: selectedSubject.examDate },
+                    { label: "Progress", value: `${selectedSubject.progress}%` },
+                  ].map((item) => (
+                    <div key={item.label} className="bg-secondary/40 rounded-xl p-3">
+                      <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">{item.label}</p>
+                      <p className="text-lg font-bold text-foreground">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">Documents</h3>
+                  <button onClick={() => { setUploadForm({ ...uploadForm, subjectId: selectedSubject.id }); setShowUpload(true); }}
+                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-primary text-primary-foreground text-xs font-medium">
+                    <Plus className="h-3 w-3" strokeWidth={2} /> Upload
+                  </button>
+                </div>
+
+                {subjectDocs.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-6">No documents yet. Upload your first one!</p>
+                ) : (
+                  <div className="space-y-2">
+                    {subjectDocs.map((doc) => {
+                      const Icon = typeIcons[doc.type];
+                      return (
+                        <div key={doc.id} className="flex items-center gap-3 p-3 rounded-xl bg-background/60 hover:bg-secondary/30 transition-colors group/doc">
+                          <div className="h-8 w-8 rounded-lg bg-secondary flex items-center justify-center shrink-0">
+                            <Icon className="h-4 w-4 text-primary" strokeWidth={1.5} />
+                          </div>
+                          <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setViewDoc(doc)}>
+                            <p className="text-sm font-medium text-foreground truncate">{doc.title}</p>
+                            <p className="text-[10px] text-muted-foreground">{doc.type} · {doc.date} · {doc.createdAt}</p>
+                          </div>
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover/doc:opacity-100 transition-opacity">
+                            <button onClick={() => setViewDoc(doc)} className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground">
+                              <Eye className="h-3.5 w-3.5" strokeWidth={1.5} />
+                            </button>
+                            <button onClick={() => openEdit(doc)} className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground">
+                              <Edit3 className="h-3.5 w-3.5" strokeWidth={1.5} />
+                            </button>
+                            <button onClick={() => setDeleteDocId(doc.id)} className="h-7 w-7 rounded-md hover:bg-destructive/10 flex items-center justify-center text-muted-foreground hover:text-destructive">
+                              <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      <AnimatePresence>
+        {viewDoc && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center">
+            <div className="absolute inset-0 bg-foreground/20 backdrop-blur-sm" onClick={() => setViewDoc(null)} />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="relative bg-card rounded-2xl p-6 shadow-soft-lg w-full max-w-lg z-10 max-h-[80vh] overflow-auto">
+              <button onClick={() => setViewDoc(null)} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="h-10 w-10 rounded-xl bg-secondary flex items-center justify-center">
+                  {(() => { const Icon = typeIcons[viewDoc.type]; return <Icon className="h-5 w-5 text-primary" strokeWidth={1.5} />; })()}
+                </div>
+                <div>
+                  <h2 className="text-lg font-display font-semibold text-foreground">{viewDoc.title}</h2>
+                  <p className="text-xs text-muted-foreground">{viewDoc.type} · {getSubjectName(viewDoc.subjectId)}</p>
+                </div>
+              </div>
+              <div className="space-y-3 text-sm">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-secondary/40 rounded-xl p-3">
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Created</p>
+                    <p className="text-sm font-medium text-foreground">{viewDoc.createdAt}</p>
+                  </div>
+                  <div className="bg-secondary/40 rounded-xl p-3">
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Date</p>
+                    <p className="text-sm font-medium text-foreground">{viewDoc.date}</p>
+                  </div>
+                </div>
+                {viewDoc.content && (
+                  <div className="bg-background rounded-xl p-4 border border-border">
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-2">Content</p>
+                    <p className="text-sm text-foreground whitespace-pre-wrap">{viewDoc.content}</p>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button onClick={() => { setViewDoc(null); openEdit(viewDoc); }}
+                  className="flex-1 h-10 rounded-full bg-secondary text-secondary-foreground font-medium text-sm hover:bg-secondary/80 transition-colors">Edit</button>
+                <button onClick={() => { setViewDoc(null); setDeleteDocId(viewDoc.id); }}
+                  className="h-10 px-5 rounded-full bg-destructive/10 text-destructive font-medium text-sm hover:bg-destructive/20 transition-colors">Delete</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {editDoc && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center">
+            <div className="absolute inset-0 bg-foreground/20 backdrop-blur-sm" onClick={() => setEditDoc(null)} />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="relative bg-card rounded-2xl p-6 shadow-soft-lg w-full max-w-md z-10">
+              <button onClick={() => setEditDoc(null)} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+              <h2 className="text-lg font-display font-semibold text-foreground mb-4">Edit Document</h2>
+              <div className="space-y-3">
+                <input placeholder="Title" value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                  className="w-full h-10 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none" />
+                {(editDoc.type === "note" || editDoc.type === "link") && (
+                  <textarea placeholder={editDoc.type === "link" ? "URL" : "Content"} value={editForm.content}
+                    onChange={(e) => setEditForm({ ...editForm, content: e.target.value })} rows={5}
+                    className="w-full rounded-xl bg-background px-4 py-3 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none resize-none" />
+                )}
+                <select value={editForm.subjectId} onChange={(e) => setEditForm({ ...editForm, subjectId: e.target.value })}
+                  className="w-full h-10 rounded-xl bg-background px-3 text-sm text-foreground border border-border outline-none">
+                  <option value="">None (Global)</option>
+                  {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                <button onClick={handleEdit}
+                  className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] active:scale-[0.98] transition-transform">Save Changes</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showAdd && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-foreground/20 backdrop-blur-sm" onClick={() => setShowAdd(false)} />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="relative bg-card rounded-2xl p-6 shadow-soft-lg w-full max-w-md z-10">
+              <button onClick={() => setShowAdd(false)} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+              <h2 className="text-lg font-display font-semibold text-foreground mb-4">Add New Subject</h2>
+              <div className="space-y-3">
+                <input placeholder="Subject name" value={newForm.name} onChange={(e) => setNewForm({ ...newForm, name: e.target.value })}
+                  className="w-full h-10 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none" />
+                <div className="grid grid-cols-2 gap-3">
+                  <select value={newForm.credits} onChange={(e) => setNewForm({ ...newForm, credits: e.target.value })}
+                    className="h-10 rounded-xl bg-background px-3 text-sm text-foreground border border-border outline-none">
+                    {[1,2,3,4,5].map((c) => <option key={c} value={c}>{c} credits</option>)}
+                  </select>
+                  <select value={newForm.difficulty} onChange={(e) => setNewForm({ ...newForm, difficulty: e.target.value })}
+                    className="h-10 rounded-xl bg-background px-3 text-sm text-foreground border border-border outline-none">
+                    <option>Easy</option><option>Medium</option><option>Hard</option>
+                  </select>
+                </div>
+                <div>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className={cn("w-full h-10 rounded-xl justify-start text-left font-normal", !newForm.examDate && "text-muted-foreground")}>
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {newForm.examDate ? format(newForm.examDate, "PPP") : <span>Select exam date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarPicker
+                        mode="single"
+                        selected={newForm.examDate}
+                        onSelect={(date) => { setNewForm({ ...newForm, examDate: date }); setExamDateError(""); }}
+                        disabled={(date) => date < tomorrow}
+                        initialFocus
+                        className={cn("p-3 pointer-events-auto")}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  {examDateError && <p className="text-xs text-destructive mt-1">{examDateError}</p>}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <input type="number" placeholder="Study hours/week" value={newForm.requiredHoursPerWeek} onChange={(e) => setNewForm({ ...newForm, requiredHoursPerWeek: e.target.value })}
+                    className="h-10 rounded-xl bg-background px-3 text-sm text-foreground border border-border outline-none" min="0" step="0.5" />
+                  <select value={newForm.priority} onChange={(e) => setNewForm({ ...newForm, priority: e.target.value })}
+                    className="h-10 rounded-xl bg-background px-3 text-sm text-foreground border border-border outline-none">
+                    <option value="low">Low priority</option>
+                    <option value="medium">Medium priority</option>
+                    <option value="high">High priority</option>
+                  </select>
+                </div>
+                <button onClick={handleAdd}
+                  className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform">Add Subject</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showUpload && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center">
+            <div className="absolute inset-0 bg-foreground/20 backdrop-blur-sm" onClick={() => setShowUpload(false)} />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="relative bg-card rounded-2xl p-6 shadow-soft-lg w-full max-w-md z-10">
+              <button onClick={() => setShowUpload(false)} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+              <h2 className="text-lg font-display font-semibold text-foreground mb-4">Add Study Material</h2>
+              <div className="flex bg-secondary/50 rounded-xl p-1 mb-4">
+                {([
+                  { key: "file", label: "Upload File", icon: Upload },
+                  { key: "note", label: "Write Note", icon: PenLine },
+                  { key: "link", label: "Add Link", icon: Link2 },
+                ]).map((tab) => (
+                  <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                    className={`flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg text-xs font-medium transition-all ${
+                      activeTab === tab.key ? "bg-primary text-primary-foreground shadow-soft" : "text-muted-foreground hover:text-foreground"
+                    }`}>
+                    <tab.icon className="h-3.5 w-3.5" strokeWidth={1.5} /> {tab.label}
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-3">
+                <input placeholder="Title" value={uploadForm.title} onChange={(e) => setUploadForm({ ...uploadForm, title: e.target.value })}
+                  className="w-full h-10 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none" />
+                <AnimatePresence mode="wait">
+                  {activeTab === "file" && (
+                    <motion.div key="file" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
+                      <label className="flex flex-col items-center justify-center w-full h-28 rounded-xl border-2 border-dashed border-border hover:border-primary/40 bg-background/50 cursor-pointer transition-colors">
+                        <Upload className="h-6 w-6 text-muted-foreground mb-2" strokeWidth={1.5} />
+                        <span className="text-xs text-muted-foreground">Click to upload or drag & drop</span>
+                        <input type="file" className="hidden" onChange={() => toast.info("File selected")} />
+                      </label>
+                    </motion.div>
+                  )}
+                  {activeTab === "note" && (
+                    <motion.div key="note" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
+                      <textarea placeholder="Write your note here..." value={uploadForm.content} onChange={(e) => setUploadForm({ ...uploadForm, content: e.target.value })} rows={5}
+                        className="w-full rounded-xl bg-background px-4 py-3 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none resize-none" />
+                    </motion.div>
+                  )}
+                  {activeTab === "link" && (
+                    <motion.div key="link" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
+                      <input type="url" placeholder="https://example.com/resource" value={uploadForm.url} onChange={(e) => setUploadForm({ ...uploadForm, url: e.target.value })}
+                        className="w-full h-10 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none" />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <select value={uploadForm.subjectId} onChange={(e) => setUploadForm({ ...uploadForm, subjectId: e.target.value })}
+                  className="w-full h-10 rounded-xl bg-background px-3 text-sm text-foreground border border-border outline-none">
+                  <option value="">None (Global)</option>
+                  {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                <button onClick={handleUpload}
+                  className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform">
+                  {activeTab === "file" ? "Upload File" : activeTab === "note" ? "Save Note" : "Add Link"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Subject?</AlertDialogTitle>
+            <AlertDialogDescription>This will remove the subject permanently.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!deleteDocId} onOpenChange={(o) => !o && setDeleteDocId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Document?</AlertDialogTitle>
+            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteDoc} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
