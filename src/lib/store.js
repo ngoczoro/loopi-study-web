@@ -20,6 +20,18 @@ import { create } from "zustand";
  * }} Quiz
  */
 
+/**
+ * @typedef {{
+ *  id: string,
+ *  name: string,
+ *  credits: number,
+ *  difficulty: "Easy" | "Medium" | "Hard",
+ *  examDate: string,
+ *  color: string,
+ *  progress: number
+ * }} Subject
+ */
+
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 export const useAppStore = create((set) => ({
@@ -63,6 +75,45 @@ export const useAppStore = create((set) => ({
       duration: 2,
       title: "CS Project",
       color: "210 80% 60%",
+    },
+  ],
+
+  subjects: [
+    {
+      id: "s1",
+      name: "Mathematics",
+      credits: 4,
+      difficulty: "Hard",
+      examDate: "Mar 28",
+      color: "340 82% 59%",
+      progress: 65,
+    },
+    {
+      id: "s2",
+      name: "Computer Science",
+      credits: 3,
+      difficulty: "Medium",
+      examDate: "Apr 02",
+      color: "210 80% 60%",
+      progress: 80,
+    },
+    {
+      id: "s3",
+      name: "Biology",
+      credits: 3,
+      difficulty: "Medium",
+      examDate: "Apr 05",
+      color: "142 45% 55%",
+      progress: 45,
+    },
+    {
+      id: "s4",
+      name: "French",
+      credits: 2,
+      difficulty: "Easy",
+      examDate: "Apr 10",
+      color: "35 90% 60%",
+      progress: 30,
     },
   ],
 
