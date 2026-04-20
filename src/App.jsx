@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Progress from "./pages/user/Progress";
 import Notes from "./pages/user/Notes";
+import Quiz from "./pages/user/Quiz";
 import Dashboard from "./pages/user/Dashboard";
 import Subjects from "./pages/user/Subjects";
 import { Routes, Route } from "react-router-dom";
@@ -28,7 +29,7 @@ function App() {
               <Route path="/progress" element={<Progress />} />
               <Route path="/notes" element={<Notes />} />
               <Route path="/planner" element={<Planner />} />
-              
+              <Route path="/quiz" element={<Quiz />} />
               {/* route mac dinh */}
               <Route path="*" element={<Dashboard />} />
             </Routes>
