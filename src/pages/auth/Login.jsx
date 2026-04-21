@@ -5,6 +5,13 @@ import loopyHappy from "@/assets/loopy-happy.png";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 import { useAppStore } from "@/lib/store";
+import {
+  loginUser,
+  getUserByEmail,
+  generateOTP,
+  saveOTP,
+  verifyOTP,
+} from "@/lib/auth-utils";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -15,18 +22,15 @@ export default function Login() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [username, setUsername] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
-  const [generatedOtp, setGeneratedOtp] = useState("");
   const [otpError, setOtpError] = useState("");
+  const [otpPurpose, setOtpPurpose] = useState(""); // "login" | "register" | "forgot"
+  const [currentOtp, setCurrentOtp] = useState(""); // Lưu OTP để hiển thị
 
   const otpRefs = useRef([]);
 
-  const generateOtp = () => {
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOtp(code);
-    setOtpError("");
-    toast.info(`OTP sent to ${email} (Demo: ${code})`);
-    return code;
-  };
+  const login = useAppStore((s) => s.login);
+  const registerUser = useAppStore((s) => s.registerUser);
+  const resetPassword = useAppStore((s) => s.resetPassword);
 
   const resetForm = () => {
     setPassword("");
@@ -34,6 +38,8 @@ export default function Login() {
     setUsername("");
     setOtp(["", "", "", "", "", ""]);
     setOtpError("");
+    setCurrentOtp("");
+    setOtpPurpose("");
   };
 
   const handleOtpChange = useCallback(
@@ -94,9 +100,6 @@ export default function Login() {
 
   const otpValue = otp.join("");
 
-  const login = useAppStore((s) => s.login);
-  const registerUser = useAppStore((s) => s.registerUser);
-
   const handleLogin = (e) => {
     e.preventDefault();
 
@@ -105,14 +108,47 @@ export default function Login() {
       return;
     }
 
-    const user = login(email, password);
-    if (!user) {
-      toast.error("Invalid credentials or account is locked");
+    // Kiểm tra thông tin đăng nhập
+    const result = loginUser(email, password);
+    if (!result.ok) {
+      if (result.reason === "not-found") {
+        toast.error("No account found for this email");
+      } else if (result.reason === "locked") {
+        toast.error("This account is locked");
+      } else {
+        toast.error("Invalid password");
+      }
       return;
     }
 
-    toast.success(`Welcome back, ${user.username}! 🐾`);
-    navigate(user.role === "admin" ? "/admin" : "/");
+    // Admin không cần verify email, đăng nhập trực tiếp
+    if (result.user?.role === "admin") {
+      const user = login(email, password);
+      if (user) {
+        toast.success(`Welcome back, ${user.username}! 🐾`);
+        resetForm();
+        setEmail("");
+        setPassword("");
+        navigate("/admin");
+      } else {
+        toast.error("Login failed");
+      }
+      return;
+    }
+
+    // User thường cần verify email với OTP
+    const code = generateOTP();
+    const otpData = saveOTP(email, code);
+    if (otpData) {
+      setCurrentOtp(code);
+      setOtpPurpose("login");
+      setOtp(["", "", "", "", "", ""]);
+      setOtpError("");
+      setView("otp-verify");
+      toast.success(`OTP sent to ${email}`);
+    } else {
+      toast.error("Failed to generate OTP");
+    }
   };
 
   const handleRegister = (e) => {
@@ -138,8 +174,24 @@ export default function Login() {
       return;
     }
 
-    generateOtp();
-    setView("otp-verify");
+    if (getUserByEmail(email)) {
+      toast.error("Email already exists");
+      return;
+    }
+
+    // Gửi OTP
+    const code = generateOTP();
+    const otpData = saveOTP(email, code);
+    if (otpData) {
+      setCurrentOtp(code);
+      setOtpPurpose("register");
+      setOtp(["", "", "", "", "", ""]);
+      setOtpError("");
+      setView("otp-verify");
+      toast.success(`OTP sent to ${email}`);
+    } else {
+      toast.error("Failed to generate OTP");
+    }
   };
 
   const handleVerifyOtp = () => {
@@ -148,13 +200,51 @@ export default function Login() {
       return;
     }
 
-    if (otpValue === generatedOtp) {
-      registerUser(username, email);
-      toast.success("Account created! Welcome! 🎉");
-      navigate("/");
-    } else {
-      setOtpError("Invalid OTP. Please try again.");
-      toast.error("Invalid OTP. Please try again.");
+    const result = verifyOTP(email, otpValue);
+
+    if (!result.valid) {
+      if (result.reason === "no-otp") {
+        setOtpError("OTP expired. Please request a new one.");
+      } else if (result.reason === "email-mismatch") {
+        setOtpError("OTP email mismatch.");
+      } else {
+        setOtpError("Invalid OTP. Please try again.");
+      }
+      toast.error("OTP verification failed");
+      return;
+    }
+
+    // OTP hợp lệ, thực hiện action tương ứng
+    if (otpPurpose === "login") {
+      const user = login(email, password);
+      if (user) {
+        toast.success(`Welcome back, ${user.username}! 🐾`);
+        resetForm();
+        setEmail("");
+        setPassword("");
+        navigate(user.role === "admin" ? "/admin" : "/");
+      } else {
+        toast.error("Login failed");
+      }
+      return;
+    }
+
+    if (otpPurpose === "register") {
+      const regResult = registerUser(username, email, password);
+      if (regResult.ok) {
+        toast.success("Account created! Welcome! ");
+        resetForm();
+        setEmail("");
+        setPassword("");
+        navigate("/");
+      } else {
+        toast.error(
+          regResult.reason === "email-exists"
+            ? "Email already exists"
+            : "Registration failed",
+        );
+      }
+      return;
     }
   };
 
@@ -166,8 +256,25 @@ export default function Login() {
       return;
     }
 
-    generateOtp();
-    setView("forgot-otp");
+    // Kiểm tra email tồn tại
+    if (!getUserByEmail(email)) {
+      toast.error("No account found for this email");
+      return;
+    }
+
+    // Gửi OTP
+    const code = generateOTP();
+    const otpData = saveOTP(email, code);
+    if (otpData) {
+      setCurrentOtp(code);
+      setOtpPurpose("forgot");
+      setOtp(["", "", "", "", "", ""]);
+      setOtpError("");
+      setView("forgot-otp");
+      toast.success(`OTP sent to ${email}`);
+    } else {
+      toast.error("Failed to generate OTP");
+    }
   };
 
   const handleForgotOtpVerify = () => {
@@ -176,15 +283,22 @@ export default function Login() {
       return;
     }
 
-    if (otpValue === generatedOtp) {
-      toast.success("OTP verified! Set your new password.");
-      setOtp(["", "", "", "", "", ""]);
-      setOtpError("");
-      setView("reset-password");
-    } else {
-      setOtpError("Invalid OTP. Please try again.");
-      toast.error("Invalid OTP. Please try again.");
+    const result = verifyOTP(email, otpValue);
+
+    if (!result.valid) {
+      if (result.reason === "no-otp") {
+        setOtpError("OTP expired. Please request a new one.");
+      } else {
+        setOtpError("Invalid OTP. Please try again.");
+      }
+      toast.error("OTP verification failed");
+      return;
     }
+
+    toast.success("OTP verified! Set your new password.");
+    setOtp(["", "", "", "", "", ""]);
+    setOtpError("");
+    setView("reset-password");
   };
 
   const handleResetPassword = (e) => {
@@ -205,9 +319,15 @@ export default function Login() {
       return;
     }
 
-    toast.success("Password reset successfully! 🔑");
-    resetForm();
-    setView("login");
+    // Update password
+    if (resetPassword(email, password)) {
+      toast.success("Password reset successfully! 🔑");
+      resetForm();
+      setEmail("");
+      setView("login");
+    } else {
+      toast.error("Failed to reset password");
+    }
   };
 
   const OtpInputRow = () => (
@@ -404,18 +524,28 @@ export default function Login() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
               >
-                <BackButton to="register" />
+                <BackButton
+                  to={otpPurpose === "login" ? "login" : "register"}
+                />
                 <div className="text-center mb-5">
                   <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
                     <span className="text-xl">✉️</span>
                   </div>
                   <h2 className="text-lg font-display font-semibold text-foreground">
-                    Verify Your Email
+                    {otpPurpose === "login"
+                      ? "Verify Login OTP"
+                      : "Verify Your Email"}
                   </h2>
                   <p className="text-xs text-muted-foreground mt-1">
                     Enter the 6-digit code sent to{" "}
                     <span className="font-medium text-foreground">{email}</span>
                   </p>
+                  {currentOtp && (
+                    <p className="text-[11px] text-primary/70 mt-2 bg-primary/5 rounded-lg py-1.5">
+                      Demo OTP:{" "}
+                      <span className="font-mono font-bold">{currentOtp}</span>
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-4">
                   <OtpInputRow />
@@ -424,10 +554,19 @@ export default function Login() {
                     disabled={otpValue.length < 6}
                     className="w-full h-11 rounded-full bg-primary text-primary-foreground font-medium text-sm shadow-soft-md hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:hover:scale-100"
                   >
-                    Verify & Create Account
+                    {otpPurpose === "login"
+                      ? "Verify & Log In"
+                      : "Verify & Create Account"}
                   </button>
                   <button
-                    onClick={generateOtp}
+                    onClick={() => {
+                      const code = generateOTP();
+                      saveOTP(email, code);
+                      setCurrentOtp(code);
+                      setOtp(["", "", "", "", "", ""]);
+                      setOtpError("");
+                      toast.info("New OTP sent!");
+                    }}
                     className="w-full text-center text-sm text-primary hover:underline"
                   >
                     Resend OTP
@@ -489,6 +628,12 @@ export default function Login() {
                     Code sent to{" "}
                     <span className="font-medium text-foreground">{email}</span>
                   </p>
+                  {currentOtp && (
+                    <p className="text-[11px] text-primary/70 mt-2 bg-primary/5 rounded-lg py-1.5">
+                      Demo OTP:{" "}
+                      <span className="font-mono font-bold">{currentOtp}</span>
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-4">
                   <OtpInputRow />
@@ -500,7 +645,14 @@ export default function Login() {
                     Verify OTP
                   </button>
                   <button
-                    onClick={generateOtp}
+                    onClick={() => {
+                      const code = generateOTP();
+                      saveOTP(email, code);
+                      setCurrentOtp(code);
+                      setOtp(["", "", "", "", "", ""]);
+                      setOtpError("");
+                      toast.info("New OTP sent!");
+                    }}
                     className="w-full text-center text-sm text-primary hover:underline"
                   >
                     Resend OTP

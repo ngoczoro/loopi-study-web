@@ -10,9 +10,26 @@ import { AppSidebar } from "./components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "./components/sidebar";
 import Planner from "./pages/user/Planner";
 import Login from "./pages/auth/Login";
+import { useAppStore } from "./lib/store";
+import NotFound from "./pages/NotFound";
 import "./App.css";
 
 function App() {
+  // Check nếu user đã login
+  const currentUser = useAppStore((s) => s.currentUser);
+
+  // Nếu chưa login, chỉ hiển thị login page
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Routes>
+          <Route path="*" element={<Login />} />
+        </Routes>
+      </div>
+    );
+  }
+
+  // Nếu đã login, hiển thị sidebar + các pages
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background">
@@ -33,9 +50,8 @@ function App() {
               <Route path="/notes" element={<Notes />} />
               <Route path="/planner" element={<Planner />} />
               <Route path="/quiz" element={<Quiz />} />
-              <Route path="/login" element={<Login />} />
               {/* route mac dinh */}
-              <Route path="*" element={<Dashboard />} />
+              <Route path="*" element={<NotFound />} />
             </Routes>
           </div>
         </main>
