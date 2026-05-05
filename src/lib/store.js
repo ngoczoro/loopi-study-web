@@ -371,7 +371,7 @@ export const useAppStore = create((set, get) => ({
       contentTitle: "Genetics Diagram.pdf",
       contentType: "file",
       detectedAt: "Mar 13 12:00",
-      resolved: true,
+      resolved: false,
     },
   ],
 

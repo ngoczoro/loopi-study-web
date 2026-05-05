@@ -83,7 +83,7 @@ export default function Pomodoro() {
   return (
     <PomodoroTimer
       subjectName={subject.name}
-      priority={subject.priority}
+      priority={priority}
       planTitle={planSession?.title}
     />
   );
@@ -224,16 +224,30 @@ function PomodoroTimer({ subjectName, priority, planTitle }) {
   return (
     <div className="max-w-2xl mx-auto flex flex-col items-center gap-8 py-8 animate-fade-in">
       {/* HEADER */}
+      <div className="w-full flex items-start justify-between mb-4">
+        {/* LEFT: EXIT */}
+        <button
+          onClick={() => navigate(-1)}
+          className="text-sm text-primary font-medium"
+        >
+          ← Exit
+        </button>
+
+        {/* RIGHT: SUBJECT */}
+        <div className="text-right">
+          <p className="text-xs text-muted-foreground">Studying</p>
+          <p className="text-sm font-semibold text-foreground">{subjectName}</p>
+        </div>
+      </div>
+
       <div className="text-center space-y-1">
         <h1 className="text-2xl font-display font-bold text-foreground">
-          {isBreak ? "Break Time! " : "Focus Session"}
+          Focus Session
         </h1>
 
-        <p className="text-sm text-muted-foreground">{subjectName}</p>
-
-        {planTitle && (
-          <p className="text-xs text-muted-foreground">{planTitle}</p>
-        )}
+        <p className="text-sm text-muted-foreground">
+          Loopy is studying with you!
+        </p>
       </div>
 
       {/* TIMER */}
