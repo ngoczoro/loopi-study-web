@@ -30,10 +30,10 @@ import {
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Progress", url: "/progress", icon: BarChart3 },
   { title: "My Subjects", url: "/subjects", icon: BookOpen },
   { title: "Study Planner", url: "/planner", icon: CalendarDays },
   { title: "Pomodoro Timer", url: "/pomodoro", icon: Timer },
-  { title: "Progress", url: "/progress", icon: BarChart3 },
   { title: "Notes", url: "/notes", icon: FileText },
   { title: "Quizzes", url: "/quiz", icon: Brain },
   { title: "Goals & Streak", url: "/goals", icon: Target },
