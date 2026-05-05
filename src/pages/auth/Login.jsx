@@ -121,33 +121,16 @@ export default function Login() {
       return;
     }
 
-    // Admin không cần verify email, đăng nhập trực tiếp
-    if (result.user?.role === "admin") {
-      const user = login(email, password);
-      if (user) {
-        toast.success(`Welcome back, ${user.username}! 🐾`);
-        resetForm();
-        setEmail("");
-        setPassword("");
-        navigate("/admin");
-      } else {
-        toast.error("Login failed");
-      }
-      return;
-    }
-
-    // User thường cần verify email với OTP
-    const code = generateOTP();
-    const otpData = saveOTP(email, code);
-    if (otpData) {
-      setCurrentOtp(code);
-      setOtpPurpose("login");
-      setOtp(["", "", "", "", "", ""]);
-      setOtpError("");
-      setView("otp-verify");
-      toast.success(`OTP sent to ${email}`);
+    // Đăng nhập trực tiếp không cần OTP
+    const user = login(email, password);
+    if (user) {
+      toast.success(`Welcome back, ${user.username}! 🐾`);
+      resetForm();
+      setEmail("");
+      setPassword("");
+      navigate(user.role === "admin" ? "/admin" : "/");
     } else {
-      toast.error("Failed to generate OTP");
+      toast.error("Login failed");
     }
   };
 

@@ -36,6 +36,26 @@ import {
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+const loadPreferencesFromStorage = () => {
+  try {
+    const stored = localStorage.getItem("loopi_preferences");
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error("Error loading preferences:", e);
+  }
+  return {
+    pomodoroDuration: 25,
+    breakDuration: 5,
+    notifications: {
+      taskReminders: true,
+      sessionReminders: true,
+      deadlineAlerts: true,
+    },
+  };
+};
+
 export const useAppStore = create((set, get) => ({
   // --- AUTH STATE ---
   currentUser: null,
@@ -313,6 +333,9 @@ export const useAppStore = create((set, get) => ({
 
   blockedSlots: [],
 
+  // --- USER PREFERENCES ---
+  preferences: loadPreferencesFromStorage(),
+
   violations: [
     {
       id: "v1",
@@ -406,14 +429,53 @@ export const useAppStore = create((set, get) => ({
     set((state) => ({ documents: state.documents.filter((d) => d.id !== id) })),
 
   // Users
-  updateUser: (id, updates) =>
-    set((state) => ({
-      users: state.users.map((u) => (u.id === id ? { ...u, ...updates } : u)),
+  updateUser: (id, updates) => {
+    const state = get();
+    const updatedUsers = state.users.map((u) =>
+      u.id === id ? { ...u, ...updates } : u,
+    );
+    // Persist to localStorage
+    saveUsers(updatedUsers);
+    set({
+      users: updatedUsers,
       currentUser:
         state.currentUser?.id === id
           ? { ...state.currentUser, ...updates }
           : state.currentUser,
-    })),
+    });
+  },
+
+  changePassword: (oldPassword, newPassword) => {
+    const state = get();
+    if (!state.currentUser) return { ok: false, reason: "not-logged-in" };
+
+    // Validate old password
+    if (state.currentUser.password !== oldPassword) {
+      return { ok: false, reason: "invalid-old-password" };
+    }
+
+    // Update password and persist
+    const updatedUsers = state.users.map((u) =>
+      u.id === state.currentUser.id ? { ...u, password: newPassword } : u,
+    );
+    saveUsers(updatedUsers);
+
+    set({
+      users: updatedUsers,
+      currentUser: { ...state.currentUser, password: newPassword },
+    });
+
+    return { ok: true };
+  },
+
+  // Preferences
+  updatePreferences: (updates) =>
+    set((state) => {
+      const newPreferences = { ...state.preferences, ...updates };
+      // Persist to localStorage
+      localStorage.setItem("loopi_preferences", JSON.stringify(newPreferences));
+      return { preferences: newPreferences };
+    }),
 
   // Quizzes
   addQuiz: (q) =>
