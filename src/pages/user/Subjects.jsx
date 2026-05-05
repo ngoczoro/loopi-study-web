@@ -1,25 +1,28 @@
 import { useState } from "react";
-import { BookOpen, Plus, Star, Calendar, Trash2, X, FileText, Upload, Link2, PenLine, Eye, Edit3, CalendarIcon } from "lucide-react";
+import { BookOpen, Plus, Star, Calendar, Trash2, X, FileText, Upload, Link2, PenLine, Eye, Edit3, CalendarIcon, Play, Sparkles, Loader2 } from "lucide-react";
 import { format, addDays, startOfDay } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
-import { useAppStore } from "../../lib/store";
-import { cn } from "../../lib/utils";
-import { Button } from "../../components/button";
-import { Calendar as CalendarPicker } from "../../components/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "../../components/popover";
+import { useNavigate } from "react-router-dom";
+import { useAppStore } from "@/lib/store";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/button";
+import { Calendar as CalendarPicker } from "@/components/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/popover";
 import { toast } from "sonner";
+import { generateMockQuiz, moderateContent } from "@/lib/ai-utils";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
-} from "../../components/sheet";
+} from "@/components/sheet";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "../../components/alert-dialog";
+} from "@/components/alert-dialog";
 
 const typeIcons = { note: FileText, file: Upload, link: Link2 };
 
 export default function Subjects() {
-  const { subjects, documents, addSubject, deleteSubject, addDocument, deleteDocument, updateDocument } = useAppStore();
+  const { subjects, documents, addSubject, deleteSubject, addDocument, deleteDocument, updateDocument, addQuiz, addViolation } = useAppStore();
+  const navigate = useNavigate();
   
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -43,6 +46,59 @@ export default function Subjects() {
   const [editDoc, setEditDoc] = useState(null);
   const [editForm, setEditForm] = useState({ title: "", content: "", subjectId: "" });
 
+  // Quick AI Quiz state
+  const [quizSubject, setQuizSubject] = useState(null);
+  const [aiTopic, setAiTopic] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiPreview, setAiPreview] = useState(null);
+
+  const openQuickQuiz = (s) => { 
+    setQuizSubject(s); 
+    setAiTopic(s.name); 
+    setAiPreview(null); 
+  };
+
+  const handleGenerateQuiz = () => {
+    if (!aiTopic.trim()) { toast.error("Please enter a topic"); return; }
+    const mod = moderateContent(aiTopic);
+    if (mod?.flagged) {
+      addViolation({ 
+        userId: "u1", 
+        userName: "Student", 
+        userEmail: "student@example.com", 
+        type: mod.type, 
+        contentId: "", 
+        contentTitle: aiTopic, 
+        contentType: "note", 
+        detectedAt: new Date().toLocaleString(), 
+        resolved: false 
+      });
+      toast.error("Content flagged for moderation.");
+      return;
+    }
+    setAiLoading(true);
+    setTimeout(() => {
+      setAiPreview(generateMockQuiz(aiTopic, quizSubject?.id || null));
+      setAiLoading(false);
+    }, 1000);
+  };
+
+  const handleSaveQuiz = () => {
+    if (!aiPreview || !quizSubject) return;
+    addQuiz({ 
+      title: aiPreview.title, 
+      subjectId: quizSubject.id, 
+      questions: aiPreview.questions, 
+      createdAt: new Date().toISOString() 
+    });
+    toast.success("Quiz saved! 🎉");
+    setQuizSubject(null);
+    setAiPreview(null);
+    setAiTopic("");
+  };
+
+  const handleStartStudy = (s) => navigate(`/pomodoro?subjectId=${s.id}`);
+
   const getSubjectName = (subjectId) => {
     if (!subjectId) return "General";
     return subjects.find((s) => s.id === subjectId)?.name || "Unknown";
@@ -59,7 +115,6 @@ export default function Subjects() {
     setExamDateError("");
     const colors = ["340 82% 59%", "210 80% 60%", "142 45% 55%", "35 90% 60%", "280 60% 65%"];
     const formattedDate = format(newForm.examDate, "MMM dd");
-    
     addSubject({ 
       name: newForm.name, 
       credits: parseInt(newForm.credits), 
@@ -70,7 +125,6 @@ export default function Subjects() {
       requiredHoursPerWeek: newForm.requiredHoursPerWeek ? parseFloat(newForm.requiredHoursPerWeek) : undefined, 
       priority: newForm.priority 
     });
-    
     setShowAdd(false);
     setNewForm({ name: "", credits: "3", difficulty: "Medium", examDate: undefined, requiredHoursPerWeek: "", priority: "medium" });
     toast.success("Subject added successfully! 📚");
@@ -96,7 +150,6 @@ export default function Subjects() {
   const handleUpload = () => {
     if (!uploadForm.title.trim()) { toast.error("Please add a title"); return; }
     const subId = uploadForm.subjectId || selectedSubject?.id || null;
-    
     addDocument({ 
       title: uploadForm.title, 
       type: activeTab, 
@@ -107,7 +160,6 @@ export default function Subjects() {
       ownerName: "Student", 
       createdAt: new Date().toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }) 
     });
-    
     setShowUpload(false);
     setUploadForm({ title: "", subjectId: "", content: "", url: "" });
     setActiveTab("note");
@@ -121,7 +173,11 @@ export default function Subjects() {
 
   const handleEdit = () => {
     if (!editDoc || !editForm.title.trim()) { toast.error("Title required"); return; }
-    updateDocument(editDoc.id, { title: editForm.title, content: editForm.content || undefined, subjectId: editForm.subjectId || null });
+    updateDocument(editDoc.id, { 
+      title: editForm.title, 
+      content: editForm.content || undefined, 
+      subjectId: editForm.subjectId || null 
+    });
     setEditDoc(null);
     toast.success("Document updated! ✅");
   };
@@ -200,6 +256,17 @@ export default function Subjects() {
                       <p className="text-lg font-bold text-foreground">{item.value}</p>
                     </div>
                   ))}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => handleStartStudy(selectedSubject)}
+                    className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-primary text-primary-foreground text-xs font-medium hover:scale-[1.02] transition-transform">
+                    <Play className="h-3.5 w-3.5" strokeWidth={2} /> Start Study
+                  </button>
+                  <button onClick={() => openQuickQuiz(selectedSubject)}
+                    className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-secondary text-secondary-foreground text-xs font-medium hover:bg-secondary/80">
+                    <Sparkles className="h-3.5 w-3.5" strokeWidth={2} /> Generate Quiz
+                  </button>
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -469,6 +536,67 @@ export default function Subjects() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AnimatePresence>
+        {quizSubject && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center">
+            <div className="absolute inset-0 bg-foreground/20 backdrop-blur-sm" onClick={() => { setQuizSubject(null); setAiPreview(null); }} />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="relative bg-card rounded-2xl p-6 shadow-soft-lg w-full max-w-lg z-10 max-h-[85vh] overflow-auto">
+              <button onClick={() => { setQuizSubject(null); setAiPreview(null); }} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <Sparkles className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-display font-semibold text-foreground">Quick Quiz · {quizSubject.name}</h2>
+                  <p className="text-xs text-muted-foreground">AI-generated quiz linked to this subject</p>
+                </div>
+              </div>
+
+              {!aiPreview ? (
+                <div className="space-y-3">
+                  <input placeholder="Topic" value={aiTopic} onChange={(e) => setAiTopic(e.target.value)}
+                    className="w-full h-10 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none" />
+                  <button onClick={handleGenerateQuiz} disabled={aiLoading}
+                    className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform disabled:opacity-50 flex items-center justify-center gap-2">
+                    {aiLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating...</> : <><Sparkles className="h-4 w-4" /> Generate Quiz</>}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-foreground">{aiPreview.title}</h3>
+                  <p className="text-xs text-muted-foreground">{aiPreview.questions.length} questions generated</p>
+                  <div className="space-y-2 max-h-60 overflow-auto">
+                    {aiPreview.questions.map((q, i) => (
+                      <div key={i} className="bg-secondary/40 rounded-xl p-3">
+                        <p className="text-xs font-medium text-foreground mb-1">Q{i + 1}. {q.question}</p>
+                        <div className="space-y-0.5">
+                          {q.options.map((o, j) => (
+                            <p key={j} className={`text-xs ${j === q.correctIndex ? "text-primary font-medium" : "text-muted-foreground"}`}>
+                              {String.fromCharCode(65 + j)}) {o} {j === q.correctIndex && "✓"}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setAiPreview(null)} className="flex-1 h-10 rounded-full bg-secondary text-secondary-foreground font-medium text-sm hover:bg-secondary/80">
+                      Regenerate
+                    </button>
+                    <button onClick={handleSaveQuiz} className="flex-1 h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform">
+                      ✅ Save Quiz
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -493,6 +493,16 @@ export const useAppStore = create((set, get) => ({
         ...newSessions.map((s) => ({ ...s, id: uid() })),
       ],
     })),
+  updateSession: (id, updates) =>
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === id ? { ...s, ...updates } : s,
+      ),
+    })),
+  deleteSession: (id) =>
+    set((state) => ({
+      sessions: state.sessions.filter((s) => s.id !== id),
+    })),
 
   // Blocked Slots (Lịch bận)
   toggleBlockedSlot: (day, hour) =>

@@ -63,7 +63,7 @@ export function AppSidebar() {
         <img src={loopyHappy} alt="Loopy" className="w-10 h-10 rounded-full" />
         {!collapsed && (
           <span className="font-display font-bold text-lg text-foreground tracking-tight">
-            StudyBeaver
+            LoopiStudy
           </span>
         )}
       </div>

@@ -10,12 +10,16 @@ import { AppSidebar } from "./components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "./components/sidebar";
 import Planner from "./pages/user/Planner";
 import Settings from "./pages/user/Settings";
+import Notifications from "./pages/user/Notifications";
+import Goals from "./pages/user/Goals";
 import Login from "./pages/auth/Login";
 import { useAppStore } from "./lib/store";
 import NotFound from "./pages/NotFound";
 import { AdminLayout } from "./components/AdminLayout";
 import AdminContent from "./pages/admin/AdminContent";
 import AdminWarnings from "./pages/admin/AdminWarnings";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminUsers from "./pages/admin/AdminUsers";
 import "./App.css";
 
 function App() {
@@ -38,9 +42,9 @@ function App() {
     return (
       <AdminLayout>
         <Routes>
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin/users" element={<AdminUsers />} />
           <Route path="/admin/content" element={<AdminContent />} />
-          <Route path="/admin/users" element={<AdminContent />} />
-          <Route path="/admin/analytics" element={<AdminContent />} />
           <Route path="/admin/warnings" element={<AdminWarnings />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
@@ -69,7 +73,10 @@ function App() {
               <Route path="/notes" element={<Notes />} />
               <Route path="/planner" element={<Planner />} />
               <Route path="/quiz" element={<Quiz />} />
+              <Route path="/goals" element={<Goals />} />
+              <Route path="/notifications" element={<Notifications />} />
               <Route path="/settings" element={<Settings />} />
+            
               {/* route mac dinh */}
               <Route path="*" element={<NotFound />} />
             </Routes>
