@@ -1,21 +1,111 @@
 import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { Play, Pause, RotateCcw } from "lucide-react";
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  AlertCircle,
+  BookOpen,
+  CalendarDays,
+  ArrowLeft,
+} from "lucide-react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import loopyStudying from "@/assets/loopy-studying.png";
 import loopySleepy from "@/assets/loopy-sleepy.png";
+import { useAppStore } from "@/lib/store";
+import { toast } from "sonner";
 
-const WORK_MINUTES = 25;
-const BREAK_MINUTES = 5;
+const MAX_WORK_MINUTES = 45;
+
+function suggestWorkMinutes(priority) {
+  if (priority === "high") return 45;
+  if (priority === "low") return 20;
+  return 30; // medium / default
+}
 
 export default function Pomodoro() {
-  const [seconds, setSeconds] = useState(WORK_MINUTES * 60);
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const { subjects, sessions } = useAppStore();
+
+  const subjectId = params.get("subjectId");
+  const studyPlanId = params.get("studyPlanId");
+
+  const subject = subjects.find((s) => s.id === subjectId) || null;
+
+  const priority =
+    subject?.priority ||
+    (subject?.difficulty === "Hard"
+      ? "high"
+      : subject?.difficulty === "Easy"
+        ? "low"
+        : "medium");
+
+  const planSession = sessions.find((s) => s.id === studyPlanId) || null;
+
+  if (!subject) {
+    return (
+      <div className="max-w-md mx-auto py-16 text-center animate-fade-in">
+        <div className="bg-card rounded-2xl p-8 shadow-soft space-y-4">
+          <div className="h-14 w-14 mx-auto rounded-full bg-warning/20 flex items-center justify-center">
+            <AlertCircle className="h-7 w-7 text-warning-foreground" />
+          </div>
+
+          <h1 className="text-xl font-display font-bold text-foreground">
+            Study Mode unavailable
+          </h1>
+
+          <p className="text-sm text-muted-foreground">
+            Please start from{" "}
+            <span className="font-semibold">Study Planner</span> or{" "}
+            <span className="font-semibold">Subject</span>.
+          </p>
+
+          <div className="flex gap-2 justify-center pt-2">
+            <button
+              onClick={() => navigate("/planner")}
+              className="h-10 px-4 rounded-full bg-primary text-primary-foreground font-medium text-sm"
+            >
+              Open Study Planner
+            </button>
+
+            <button
+              onClick={() => navigate("/subjects")}
+              className="h-10 px-4 rounded-full bg-secondary text-secondary-foreground font-medium text-sm"
+            >
+              Open Subjects
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <PomodoroTimer
+      subjectName={subject.name}
+      priority={subject.priority}
+      planTitle={planSession?.title}
+    />
+  );
+}
+
+function PomodoroTimer({ subjectName, priority, planTitle }) {
+  const navigate = useNavigate();
+
+  const suggested = suggestWorkMinutes(priority);
+
+  const [workMinutes, setWorkMinutes] = useState(suggested);
+  const [breakMinutes, setBreakMinutes] = useState(5);
+  const [started, setStarted] = useState(false);
+
+  const [seconds, setSeconds] = useState(suggested * 60);
   const [isRunning, setIsRunning] = useState(false);
   const [isBreak, setIsBreak] = useState(false);
-  const [sessions, setSessions] = useState(0);
+  const [completed, setCompleted] = useState(0);
 
   const intervalRef = useRef(null);
 
-  const totalSeconds = isBreak ? BREAK_MINUTES * 60 : WORK_MINUTES * 60;
+  const totalSeconds = isBreak ? breakMinutes * 60 : workMinutes * 60;
   const progress = 1 - seconds / totalSeconds;
   const circumference = 2 * Math.PI * 140;
 
@@ -28,19 +118,20 @@ export default function Pomodoro() {
       setIsRunning(false);
 
       if (!isBreak) {
-        setSessions((s) => s + 1);
+        setCompleted((s) => s + 1);
+        toast.success(`Focus session complete! 🎉 (${subjectName})`);
         setIsBreak(true);
-        setSeconds(BREAK_MINUTES * 60);
+        setSeconds(breakMinutes * 60);
       } else {
         setIsBreak(false);
-        setSeconds(WORK_MINUTES * 60);
+        setSeconds(workMinutes * 60);
       }
     }
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [isRunning, seconds, isBreak]);
+  }, [isRunning, seconds, isBreak, breakMinutes, workMinutes, subjectName]);
 
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
@@ -48,22 +139,101 @@ export default function Pomodoro() {
   const reset = () => {
     setIsRunning(false);
     setIsBreak(false);
-    setSeconds(WORK_MINUTES * 60);
+    setSeconds(workMinutes * 60);
   };
+
+  const handleStart = () => {
+    const w = Math.min(Math.max(1, workMinutes), MAX_WORK_MINUTES);
+    const b = Math.max(1, breakMinutes);
+
+    setWorkMinutes(w);
+    setBreakMinutes(b);
+    setSeconds(w * 60);
+    setStarted(true);
+    setIsRunning(true);
+  };
+
+  if (!started) {
+    return (
+      <div className="max-w-md mx-auto py-8 animate-fade-in">
+        <button
+          onClick={() => navigate(-1)}
+          className="text-sm text-primary font-medium mb-4 inline-flex items-center gap-1"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back
+        </button>
+
+        <div className="bg-card rounded-2xl p-6 shadow-soft space-y-5">
+          <div className="flex items-center gap-2">
+            <BookOpen className="h-4 w-4 text-primary" />
+            <h1 className="text-xl font-display font-bold text-foreground">
+              Study Mode Setup
+            </h1>
+          </div>
+
+          {/* SUBJECT */}
+          <div className="text-sm text-muted-foreground">
+            <p className="font-medium text-foreground">{subjectName}</p>
+            {planTitle && <p className="text-xs">{planTitle}</p>}
+          </div>
+
+          {/* WORK TIME */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">
+              Focus Time (minutes)
+            </label>
+
+            <input
+              type="number"
+              value={workMinutes}
+              onChange={(e) => setWorkMinutes(Number(e.target.value))}
+              className="w-full mt-1 h-10 rounded-xl bg-background border border-border px-3 text-sm"
+            />
+
+            <p className="text-xs text-muted-foreground mt-1">
+              Suggested: {suggested} minutes
+            </p>
+          </div>
+
+          {/* BREAK TIME */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">
+              Break Time (minutes)
+            </label>
+
+            <input
+              type="number"
+              value={breakMinutes}
+              onChange={(e) => setBreakMinutes(Number(e.target.value))}
+              className="w-full mt-1 h-10 rounded-xl bg-background border border-border px-3 text-sm"
+            />
+          </div>
+
+          {/* START */}
+          <button
+            onClick={handleStart}
+            className="w-full h-11 rounded-full bg-primary text-primary-foreground font-medium text-sm shadow-soft-md hover:scale-[1.01] transition-transform"
+          >
+            Start Study
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto flex flex-col items-center gap-8 py-8 animate-fade-in">
       {/* HEADER */}
       <div className="text-center space-y-1">
         <h1 className="text-2xl font-display font-bold text-foreground">
-          {isBreak ? "Break Time! 🎉" : "Focus Session"}
+          {isBreak ? "Break Time! " : "Focus Session"}
         </h1>
 
-        <p className="text-sm text-muted-foreground">
-          {isBreak
-            ? "Take a break, you've earned it."
-            : "Loopy is studying with you!"}
-        </p>
+        <p className="text-sm text-muted-foreground">{subjectName}</p>
+
+        {planTitle && (
+          <p className="text-xs text-muted-foreground">{planTitle}</p>
+        )}
       </div>
 
       {/* TIMER */}
@@ -134,7 +304,7 @@ export default function Pomodoro() {
       {/* SESSION */}
       <p className="text-sm text-muted-foreground">
         Sessions completed today:{" "}
-        <span className="font-bold text-foreground">{sessions}</span>
+        <span className="font-bold text-foreground">{completed}</span>
       </p>
 
       {/* MASCOT */}
