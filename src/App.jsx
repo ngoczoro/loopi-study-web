@@ -8,13 +8,14 @@ import Subjects from "./pages/user/Subjects";
 import { Routes, Route } from "react-router-dom";
 import { AppSidebar } from "./components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "./components/sidebar";
-import { AdminLayout } from "./components/AdminLayout";
 import Planner from "./pages/user/Planner";
 import Settings from "./pages/user/Settings";
 import Login from "./pages/auth/Login";
 import { useAppStore } from "./lib/store";
 import NotFound from "./pages/NotFound";
+import { AdminLayout } from "./components/AdminLayout";
 import AdminContent from "./pages/admin/AdminContent";
+import AdminWarnings from "./pages/admin/AdminWarnings";
 import "./App.css";
 
 function App() {
@@ -38,6 +39,9 @@ function App() {
       <AdminLayout>
         <Routes>
           <Route path="/admin/content" element={<AdminContent />} />
+          <Route path="/admin/users" element={<AdminContent />} />
+          <Route path="/admin/analytics" element={<AdminContent />} />
+          <Route path="/admin/warnings" element={<AdminWarnings />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </AdminLayout>
