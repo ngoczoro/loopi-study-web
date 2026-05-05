@@ -157,9 +157,9 @@ export default function Settings() {
               Email
             </label>
             <input
-              className="mt-1 w-full h-10 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none"
+              className="mt-1 w-full h-10 rounded-xl bg-muted px-4 text-sm text-muted-foreground border border-border opacity-70 cursor-not-allowed"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              disabled
             />
           </div>
           <button
