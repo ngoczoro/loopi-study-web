@@ -6,6 +6,7 @@ import { useAuthStore } from "../lib/authStore";
  */
 export const useAuth = () => {
   const {
+    email,
     user,
     accessToken,
     refreshToken,
@@ -27,7 +28,7 @@ export const useAuth = () => {
   // Restore auth on app load
   useEffect(() => {
     restoreAuth();
-  }, [restoreAuth]);
+  }, []);
 
   return {
     user,
@@ -35,7 +36,8 @@ export const useAuth = () => {
     refreshToken,
     isLoading,
     error,
-    isAuthenticated: isAuthenticated(),
+    email,
+    isAuthenticated,
     register,
     verifyOTP,
     resendOTP,

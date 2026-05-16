@@ -37,8 +37,12 @@ export default function Login() {
 
   // Auto redirect if already logged in
   useEffect(() => {
-    if (JSON.parse(localStorage.getItem("auth-store") || "{}")?.state?.user) {
-      navigate("/");
+    const authData = JSON.parse(localStorage.getItem("auth-store") || "{}");
+
+    const user = authData?.state?.user;
+
+    if (user) {
+      navigate(user.role === "admin" ? "/admin" : "/");
     }
   }, [navigate]);
 
@@ -142,6 +146,7 @@ export default function Login() {
   // Login handler
   const handleLogin = async (e) => {
     e.preventDefault();
+    console.log("LOGIN CLICKED");
 
     if (!formData.email.trim()) {
       toast.error("Please enter your email");
@@ -159,6 +164,8 @@ export default function Login() {
     }
 
     const result = await login(formData.email, formData.password);
+    console.log("LOGIN RESULT:", result);
+    console.log("USER:", result?.data?.user);
 
     if (result.success) {
       toast.success(`Welcome back! 🐾`);

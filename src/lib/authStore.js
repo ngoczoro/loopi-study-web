@@ -25,6 +25,7 @@ export const useAuthStore = create(
       isLoading: false,
       error: null,
       email: null, // Temporary email for OTP flow
+      isAuthenticated: false,
 
       // Actions
       setLoading: (isLoading) => set({ isLoading }),
@@ -194,6 +195,7 @@ export const useAuthStore = create(
               refreshToken,
               email: null,
               error: null,
+              isAuthenticated: true,
             });
             // Save tokens to localStorage (also handled by persist)
             localStorage.setItem("accessToken", accessToken);
@@ -232,6 +234,7 @@ export const useAuthStore = create(
             email: null,
             error: null,
             isLoading: false,
+            isAuthenticated: false,
           });
           // Clear localStorage
           localStorage.removeItem("accessToken");
@@ -276,13 +279,13 @@ export const useAuthStore = create(
         }
       },
 
-      /**
-       * Check if user is authenticated
-       */
-      isAuthenticated: () => {
-        const { user, accessToken } = get();
-        return !!(user && accessToken);
-      },
+      // /**
+      //  * Check if user is authenticated
+      //  */
+      // isAuthenticated: () => {
+      //   const { user, accessToken } = get();
+      //   return !!(user && accessToken);
+      // },
 
       /**
        * Restore auth from localStorage on app load
@@ -295,7 +298,7 @@ export const useAuthStore = create(
         if (accessToken && userStr) {
           try {
             const user = JSON.parse(userStr);
-            set({ user, accessToken, refreshToken });
+            set({ user, accessToken, refreshToken, isAuthenticated: true });
             return true;
           } catch (error) {
             console.error("Error restoring auth:", error);
@@ -314,6 +317,7 @@ export const useAuthStore = create(
         user: state.user,
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,
+        isAuthenticated: state.isAuthenticated,
       }),
     },
   ),

@@ -32,6 +32,9 @@ import "./App.css";
 
 function App() {
   const { user, isAuthenticated } = useAuth();
+  console.log("USER:", user);
+  console.log("ROLE:", user?.role);
+  console.log("AUTH:", isAuthenticated);
 
   // If not authenticated, show auth pages only
   if (!isAuthenticated) {
