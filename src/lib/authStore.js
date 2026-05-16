@@ -131,10 +131,15 @@ export const useAuthStore = create(
       /**
        * Reset password
        */
-      resetPassword: async (email, otp, newPassword) => {
+      resetPassword: async (email, otp, newPassword, confirmPassword) => {
         set({ isLoading: true, error: null });
         try {
-          const result = await resetPasswordAPI(email, otp, newPassword);
+          const result = await resetPasswordAPI(
+            email,
+            otp,
+            newPassword,
+            confirmPassword,
+          );
           if (result.success) {
             set({ email: null, error: null });
             return result;

@@ -364,9 +364,16 @@ export default function Login() {
       return;
     }
 
-    const result = await resetPassword(formData.email, otpValue, formData.password);
+    const result = await resetPassword(
+      formData.email,
+      otpValue,
+      formData.password,
+      formData.confirmPassword,
+    );
     if (result.success) {
-      toast.success("Password reset successfully! Please login with your new password.");
+      toast.success(
+        "Password reset successfully! Please login with your new password.",
+      );
       resetForm();
       setView("login");
     } else {

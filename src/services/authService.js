@@ -179,7 +179,8 @@ export const forgotPasswordAPI = async (email) => {
   } catch (error) {
     return {
       success: false,
-      message: error.response?.data?.message || "Forgot password request failed",
+      message:
+        error.response?.data?.message || "Forgot password request failed",
       error: error.response?.data,
     };
   }
@@ -214,21 +215,29 @@ export const verifyResetOTPAPI = async (email, otp) => {
  * @param {string} newPassword
  * @returns {Promise}
  */
-export const resetPasswordAPI = async (email, otp, newPassword) => {
+export const resetPasswordAPI = async (
+  email,
+  otp,
+  newPassword,
+  confirmPassword,
+) => {
   try {
     const response = await api.post("/password/reset", {
       email,
       otp,
       newPassword,
+      confirmPassword,
     });
+
     return {
       success: true,
+      data: response.data.data,
       message: response.data.message,
     };
   } catch (error) {
     return {
       success: false,
-      message: error.response?.data?.message || "Password reset failed",
+      message: error.response?.data?.message || "Reset password failed",
       error: error.response?.data,
     };
   }
