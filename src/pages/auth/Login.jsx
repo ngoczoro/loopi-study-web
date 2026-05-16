@@ -1,45 +1,79 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import loopyHappy from "@/assets/loopy-happy.png";
 import { toast } from "sonner";
-import { ArrowLeft } from "lucide-react";
-import { useAppStore } from "@/lib/store";
-import {
-  loginUser,
-  getUserByEmail,
-  generateOTP,
-  saveOTP,
-  verifyOTP,
-} from "@/lib/auth-utils";
+import { ArrowLeft, Loader } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Login() {
   const navigate = useNavigate();
+  const {
+    register,
+    login,
+    verifyOTP,
+    resendOTP,
+    forgotPassword,
+    resetPassword,
+    verifyResetOTP,
+    isLoading,
+    email: storedEmail,
+  } = useAuth();
 
   const [view, setView] = useState("login");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [username, setUsername] = useState("");
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+    confirmPassword: "",
+    fullName: "",
+  });
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [otpError, setOtpError] = useState("");
   const [otpPurpose, setOtpPurpose] = useState(""); // "login" | "register" | "forgot"
-  const [currentOtp, setCurrentOtp] = useState(""); // Lưu OTP để hiển thị
+  const [timer, setTimer] = useState(0);
+  const [canResend, setCanResend] = useState(true);
 
   const otpRefs = useRef([]);
 
-  const login = useAppStore((s) => s.login);
-  const registerUser = useAppStore((s) => s.registerUser);
-  const resetPassword = useAppStore((s) => s.resetPassword);
+  // Auto redirect if already logged in
+  useEffect(() => {
+    if (JSON.parse(localStorage.getItem("auth-store") || "{}")?.state?.user) {
+      navigate("/");
+    }
+  }, [navigate]);
+
+  // Timer countdown for resend
+  useEffect(() => {
+    if (timer <= 0) {
+      setCanResend(true);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setTimer((prev) => prev - 1);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [timer]);
 
   const resetForm = () => {
-    setPassword("");
-    setConfirmPassword("");
-    setUsername("");
+    setFormData({
+      email: "",
+      password: "",
+      confirmPassword: "",
+      fullName: "",
+    });
     setOtp(["", "", "", "", "", ""]);
     setOtpError("");
-    setCurrentOtp("");
     setOtpPurpose("");
+  };
+
+  const handleFormChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
   const handleOtpChange = useCallback(
@@ -99,217 +133,244 @@ export default function Login() {
   }, []);
 
   const otpValue = otp.join("");
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
 
-  const handleLogin = (e) => {
+  // Login handler
+  const handleLogin = async (e) => {
     e.preventDefault();
 
-    if (!email.trim() || !password.trim()) {
-      toast.error("Please fill in all fields");
+    if (!formData.email.trim()) {
+      toast.error("Please enter your email");
       return;
     }
 
-    // Kiểm tra thông tin đăng nhập
-    const result = loginUser(email, password);
-    if (!result.ok) {
-      if (result.reason === "not-found") {
-        toast.error("No account found for this email");
-      } else if (result.reason === "locked") {
-        toast.error("This account is locked");
-      } else {
-        toast.error("Invalid password");
-      }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      toast.error("Please enter a valid email");
       return;
     }
 
-    // Đăng nhập trực tiếp không cần OTP
-    const user = login(email, password);
-    if (user) {
-      toast.success(`Welcome back, ${user.username}! 🐾`);
+    if (!formData.password.trim()) {
+      toast.error("Please enter your password");
+      return;
+    }
+
+    const result = await login(formData.email, formData.password);
+
+    if (result.success) {
+      toast.success(`Welcome back! 🐾`);
       resetForm();
-      setEmail("");
-      setPassword("");
-      navigate(user.role === "admin" ? "/admin" : "/");
+      navigate(result.data.user.role === "admin" ? "/admin" : "/");
     } else {
-      toast.error("Login failed");
+      // Better error messages for different scenarios
+      if (
+        result.message?.toLowerCase().includes("verify") ||
+        result.message?.toLowerCase().includes("email")
+      ) {
+        toast.error("Please verify your email first");
+      } else if (result.message?.toLowerCase().includes("banned")) {
+        toast.error("This account has been banned");
+      } else if (result.message?.toLowerCase().includes("invalid")) {
+        toast.error("Invalid email or password");
+      } else {
+        toast.error(result.message || "Login failed");
+      }
     }
   };
 
-  const handleRegister = (e) => {
+  // Register handler
+  const handleRegister = async (e) => {
     e.preventDefault();
 
     if (
-      !username.trim() ||
-      !email.trim() ||
-      !password.trim() ||
-      !confirmPassword.trim()
+      !formData.fullName.trim() ||
+      !formData.email.trim() ||
+      !formData.password.trim() ||
+      !formData.confirmPassword.trim()
     ) {
       toast.error("Please fill in all fields");
       return;
     }
 
-    if (password !== confirmPassword) {
+    if (formData.password !== formData.confirmPassword) {
       toast.error("Passwords do not match");
       return;
     }
 
-    if (password.length < 6) {
-      toast.error("Password must be at least 6 characters");
+    if (formData.password.length < 8) {
+      toast.error("Password must be at least 8 characters");
       return;
     }
 
-    if (getUserByEmail(email)) {
-      toast.error("Email already exists");
-      return;
-    }
+    const result = await register(
+      formData.email,
+      formData.password,
+      formData.confirmPassword,
+      formData.fullName,
+    );
 
-    // Gửi OTP
-    const code = generateOTP();
-    const otpData = saveOTP(email, code);
-    if (otpData) {
-      setCurrentOtp(code);
+    if (result.success) {
+      toast.success("Account created! Check your email for OTP.");
+      // Keep email for OTP verification
+      setFormData({
+        email: formData.email,
+        password: "",
+        confirmPassword: "",
+        fullName: "",
+      });
       setOtpPurpose("register");
       setOtp(["", "", "", "", "", ""]);
       setOtpError("");
       setView("otp-verify");
-      toast.success(`OTP sent to ${email}`);
+      setTimer(300);
+      setCanResend(false);
+      setTimeout(() => otpRefs.current[0]?.focus(), 100);
     } else {
-      toast.error("Failed to generate OTP");
+      // Check if email already exists
+      if (
+        result.message?.toLowerCase().includes("already") ||
+        result.message?.toLowerCase().includes("exist")
+      ) {
+        toast.error(
+          "Email already registered. Please login or use another email.",
+        );
+      } else {
+        toast.error(result.message || "Registration failed");
+      }
     }
   };
 
-  const handleVerifyOtp = () => {
+  // Verify OTP handler
+  const handleVerifyOtp = async () => {
     if (otpValue.length < 6) {
       setOtpError("Please enter all 6 digits");
       return;
     }
 
-    const result = verifyOTP(email, otpValue);
-
-    if (!result.valid) {
-      if (result.reason === "no-otp") {
-        setOtpError("OTP expired. Please request a new one.");
-      } else if (result.reason === "email-mismatch") {
-        setOtpError("OTP email mismatch.");
-      } else {
-        setOtpError("Invalid OTP. Please try again.");
-      }
-      toast.error("OTP verification failed");
-      return;
+    let result;
+    if (otpPurpose === "forgot") {
+      result = await verifyResetOTP(formData.email, otpValue);
+    } else {
+      result = await verifyOTP(formData.email, otpValue);
     }
 
-    // OTP hợp lệ, thực hiện action tương ứng
-    if (otpPurpose === "login") {
-      const user = login(email, password);
-      if (user) {
-        toast.success(`Welcome back, ${user.username}! 🐾`);
-        resetForm();
-        setEmail("");
-        setPassword("");
-        navigate(user.role === "admin" ? "/admin" : "/");
-      } else {
-        toast.error("Login failed");
+    if (result.success) {
+      if (otpPurpose === "register") {
+        toast.success("Email verified! You can now login.");
+        // Keep email for login, clear password fields
+        setFormData({
+          ...formData,
+          password: "",
+          confirmPassword: "",
+          fullName: "",
+        });
+        setOtp(["", "", "", "", "", ""]);
+        setOtpError("");
+        setOtpPurpose("");
+        setView("login");
+      } else if (otpPurpose === "forgot") {
+        toast.success("OTP verified! Set your new password.");
+        // We keep the OTP digits so resetPassword can use them
+        setOtpError("");
+        setView("reset-password");
       }
-      return;
-    }
-
-    if (otpPurpose === "register") {
-      const regResult = registerUser(username, email, password);
-      if (regResult.ok) {
-        toast.success("Account created! Welcome! ");
-        resetForm();
-        setEmail("");
-        setPassword("");
-        navigate("/");
-      } else {
-        toast.error(
-          regResult.reason === "email-exists"
-            ? "Email already exists"
-            : "Registration failed",
-        );
-      }
-      return;
+    } else {
+      setOtpError(result.message || "Invalid OTP");
+      toast.error(result.message || "OTP verification failed");
     }
   };
 
-  const handleForgotSubmit = (e) => {
+  // Resend OTP handler
+  const handleResendOtp = async () => {
+    if (!canResend) {
+      toast.error("Please wait before requesting a new OTP");
+      return;
+    }
+
+    const type = otpPurpose === "register" ? "REGISTER" : "FORGOT_PASSWORD";
+    const result = await resendOTP(formData.email, type);
+
+    if (result.success) {
+      toast.success("New OTP sent to your email");
+      setOtp(["", "", "", "", "", ""]);
+      setOtpError("");
+      setTimer(300);
+      setCanResend(false);
+      otpRefs.current[0]?.focus();
+    } else {
+      toast.error(result.message || "Failed to resend OTP");
+    }
+  };
+
+  // Forgot password handler
+  const handleForgotSubmit = async (e) => {
     e.preventDefault();
 
-    if (!email.trim()) {
+    if (!formData.email.trim()) {
       toast.error("Please enter your email");
       return;
     }
 
-    // Kiểm tra email tồn tại
-    if (!getUserByEmail(email)) {
-      toast.error("No account found for this email");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      toast.error("Please enter a valid email");
       return;
     }
 
-    // Gửi OTP
-    const code = generateOTP();
-    const otpData = saveOTP(email, code);
-    if (otpData) {
-      setCurrentOtp(code);
+    // Request OTP for forgot password
+    const result = await forgotPassword(formData.email);
+    if (result.success) {
+      toast.success("OTP sent to your email");
+      // Keep email for OTP verification
+      setFormData({
+        email: formData.email,
+        password: "",
+        confirmPassword: "",
+        fullName: "",
+      });
       setOtpPurpose("forgot");
       setOtp(["", "", "", "", "", ""]);
       setOtpError("");
       setView("forgot-otp");
-      toast.success(`OTP sent to ${email}`);
+      setTimer(300);
+      setCanResend(false);
+      setTimeout(() => otpRefs.current[0]?.focus(), 100);
     } else {
-      toast.error("Failed to generate OTP");
+      toast.error(
+        result.message ||
+          "No account found for this email or failed to send OTP",
+      );
     }
   };
 
-  const handleForgotOtpVerify = () => {
-    if (otpValue.length < 6) {
-      setOtpError("Please enter all 6 digits");
-      return;
-    }
-
-    const result = verifyOTP(email, otpValue);
-
-    if (!result.valid) {
-      if (result.reason === "no-otp") {
-        setOtpError("OTP expired. Please request a new one.");
-      } else {
-        setOtpError("Invalid OTP. Please try again.");
-      }
-      toast.error("OTP verification failed");
-      return;
-    }
-
-    toast.success("OTP verified! Set your new password.");
-    setOtp(["", "", "", "", "", ""]);
-    setOtpError("");
-    setView("reset-password");
-  };
-
-  const handleResetPassword = (e) => {
+  // Reset password handler (after OTP verification in forgot flow)
+  const handleResetPassword = async (e) => {
     e.preventDefault();
 
-    if (!password.trim() || !confirmPassword.trim()) {
+    if (!formData.password.trim() || !formData.confirmPassword.trim()) {
       toast.error("Please fill in all fields");
       return;
     }
 
-    if (password !== confirmPassword) {
+    if (formData.password !== formData.confirmPassword) {
       toast.error("Passwords do not match");
       return;
     }
 
-    if (password.length < 6) {
-      toast.error("Password must be at least 6 characters");
+    if (formData.password.length < 8) {
+      toast.error("Password must be at least 8 characters");
       return;
     }
 
-    // Update password
-    if (resetPassword(email, password)) {
-      toast.success("Password reset successfully! 🔑");
+    const result = await resetPassword(formData.email, otpValue, formData.password);
+    if (result.success) {
+      toast.success("Password reset successfully! Please login with your new password.");
       resetForm();
-      setEmail("");
       setView("login");
     } else {
-      toast.error("Failed to reset password");
+      toast.error(result.message || "Password reset failed");
     }
   };
 
@@ -327,11 +388,12 @@ export default function Login() {
             onChange={(e) => handleOtpChange(i, e.target.value)}
             onKeyDown={(e) => handleOtpKeyDown(i, e)}
             autoFocus={i === 0}
+            disabled={isLoading}
             className={`w-11 h-12 rounded-xl bg-background text-center text-lg font-bold text-foreground border ${
               otpError
                 ? "border-destructive ring-2 ring-destructive/20"
                 : "border-border focus:ring-2 focus:ring-primary/30"
-            } outline-none transition-all`}
+            } outline-none transition-all disabled:bg-gray-100`}
           />
         ))}
       </div>
@@ -370,7 +432,7 @@ export default function Login() {
             className="w-20 h-20 mx-auto mb-3"
           />
           <h1 className="text-2xl font-display font-bold text-foreground">
-            StudyBeaver
+            Loopi Study
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             Your cute study companion
@@ -406,23 +468,35 @@ export default function Login() {
                 <form onSubmit={handleLogin} className="space-y-3">
                   <input
                     type="email"
+                    name="email"
                     placeholder="Email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none"
+                    value={formData.email}
+                    onChange={handleFormChange}
+                    disabled={isLoading}
+                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none disabled:bg-gray-100"
                   />
                   <input
                     type="password"
+                    name="password"
                     placeholder="Password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none"
+                    value={formData.password}
+                    onChange={handleFormChange}
+                    disabled={isLoading}
+                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none disabled:bg-gray-100"
                   />
                   <button
                     type="submit"
-                    className="w-full h-11 rounded-full bg-primary text-primary-foreground font-medium text-sm shadow-soft-md hover:scale-[1.02] active:scale-[0.98] transition-transform"
+                    disabled={isLoading}
+                    className="w-full h-11 rounded-full bg-primary text-primary-foreground font-medium text-sm shadow-soft-md hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
                   >
-                    Log In
+                    {isLoading ? (
+                      <>
+                        <Loader size={16} className="animate-spin" />
+                        Logging in...
+                      </>
+                    ) : (
+                      "Log In"
+                    )}
                   </button>
                 </form>
                 <button
@@ -464,37 +538,53 @@ export default function Login() {
                 <form onSubmit={handleRegister} className="space-y-3">
                   <input
                     type="text"
-                    placeholder="Username"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none"
+                    name="fullName"
+                    placeholder="Full Name"
+                    value={formData.fullName}
+                    onChange={handleFormChange}
+                    disabled={isLoading}
+                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none disabled:bg-gray-100"
                   />
                   <input
                     type="email"
+                    name="email"
                     placeholder="Email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none"
+                    value={formData.email}
+                    onChange={handleFormChange}
+                    disabled={isLoading}
+                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none disabled:bg-gray-100"
                   />
                   <input
                     type="password"
-                    placeholder="Password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none"
+                    name="password"
+                    placeholder="Password (min 8 characters)"
+                    value={formData.password}
+                    onChange={handleFormChange}
+                    disabled={isLoading}
+                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none disabled:bg-gray-100"
                   />
                   <input
                     type="password"
+                    name="confirmPassword"
                     placeholder="Confirm Password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none"
+                    value={formData.confirmPassword}
+                    onChange={handleFormChange}
+                    disabled={isLoading}
+                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none disabled:bg-gray-100"
                   />
                   <button
                     type="submit"
-                    className="w-full h-11 rounded-full bg-primary text-primary-foreground font-medium text-sm shadow-soft-md hover:scale-[1.02] active:scale-[0.98] transition-transform"
+                    disabled={isLoading}
+                    className="w-full h-11 rounded-full bg-primary text-primary-foreground font-medium text-sm shadow-soft-md hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
                   >
-                    Create Account
+                    {isLoading ? (
+                      <>
+                        <Loader size={16} className="animate-spin" />
+                        Creating account...
+                      </>
+                    ) : (
+                      "Create Account"
+                    )}
                   </button>
                 </form>
               </motion.div>
@@ -515,44 +605,39 @@ export default function Login() {
                     <span className="text-xl">✉️</span>
                   </div>
                   <h2 className="text-lg font-display font-semibold text-foreground">
-                    {otpPurpose === "login"
-                      ? "Verify Login OTP"
-                      : "Verify Your Email"}
+                    Verify Your Email
                   </h2>
                   <p className="text-xs text-muted-foreground mt-1">
                     Enter the 6-digit code sent to{" "}
-                    <span className="font-medium text-foreground">{email}</span>
+                    <span className="font-medium text-foreground">
+                      {formData.email}
+                    </span>
                   </p>
-                  {currentOtp && (
-                    <p className="text-[11px] text-primary/70 mt-2 bg-primary/5 rounded-lg py-1.5">
-                      Demo OTP:{" "}
-                      <span className="font-mono font-bold">{currentOtp}</span>
-                    </p>
-                  )}
                 </div>
                 <div className="space-y-4">
                   <OtpInputRow />
                   <button
                     onClick={handleVerifyOtp}
-                    disabled={otpValue.length < 6}
-                    className="w-full h-11 rounded-full bg-primary text-primary-foreground font-medium text-sm shadow-soft-md hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:hover:scale-100"
+                    disabled={otpValue.length < 6 || isLoading}
+                    className="w-full h-11 rounded-full bg-primary text-primary-foreground font-medium text-sm shadow-soft-md hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
                   >
-                    {otpPurpose === "login"
-                      ? "Verify & Log In"
-                      : "Verify & Create Account"}
+                    {isLoading ? (
+                      <>
+                        <Loader size={16} className="animate-spin" />
+                        Verifying...
+                      </>
+                    ) : (
+                      "Verify & Continue"
+                    )}
                   </button>
                   <button
-                    onClick={() => {
-                      const code = generateOTP();
-                      saveOTP(email, code);
-                      setCurrentOtp(code);
-                      setOtp(["", "", "", "", "", ""]);
-                      setOtpError("");
-                      toast.info("New OTP sent!");
-                    }}
-                    className="w-full text-center text-sm text-primary hover:underline"
+                    onClick={handleResendOtp}
+                    disabled={!canResend || isLoading}
+                    className="w-full text-center text-sm text-primary hover:underline disabled:text-gray-400 disabled:cursor-not-allowed"
                   >
-                    Resend OTP
+                    {canResend
+                      ? "Resend OTP"
+                      : `Resend in ${formatTime(timer)}`}
                   </button>
                 </div>
               </motion.div>
@@ -577,16 +662,26 @@ export default function Login() {
                 <form onSubmit={handleForgotSubmit} className="space-y-3">
                   <input
                     type="email"
+                    name="email"
                     placeholder="Email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none"
+                    value={formData.email}
+                    onChange={handleFormChange}
+                    disabled={isLoading}
+                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none disabled:bg-gray-100"
                   />
                   <button
                     type="submit"
-                    className="w-full h-11 rounded-full bg-primary text-primary-foreground font-medium text-sm shadow-soft-md hover:scale-[1.02] active:scale-[0.98] transition-transform"
+                    disabled={isLoading}
+                    className="w-full h-11 rounded-full bg-primary text-primary-foreground font-medium text-sm shadow-soft-md hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
                   >
-                    Send OTP
+                    {isLoading ? (
+                      <>
+                        <Loader size={16} className="animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      "Send OTP"
+                    )}
                   </button>
                 </form>
               </motion.div>
@@ -609,36 +704,35 @@ export default function Login() {
                   </h2>
                   <p className="text-xs text-muted-foreground mt-1">
                     Code sent to{" "}
-                    <span className="font-medium text-foreground">{email}</span>
+                    <span className="font-medium text-foreground">
+                      {formData.email}
+                    </span>
                   </p>
-                  {currentOtp && (
-                    <p className="text-[11px] text-primary/70 mt-2 bg-primary/5 rounded-lg py-1.5">
-                      Demo OTP:{" "}
-                      <span className="font-mono font-bold">{currentOtp}</span>
-                    </p>
-                  )}
                 </div>
                 <div className="space-y-4">
                   <OtpInputRow />
                   <button
-                    onClick={handleForgotOtpVerify}
-                    disabled={otpValue.length < 6}
-                    className="w-full h-11 rounded-full bg-primary text-primary-foreground font-medium text-sm shadow-soft-md hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:hover:scale-100"
+                    onClick={handleVerifyOtp}
+                    disabled={otpValue.length < 6 || isLoading}
+                    className="w-full h-11 rounded-full bg-primary text-primary-foreground font-medium text-sm shadow-soft-md hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
                   >
-                    Verify OTP
+                    {isLoading ? (
+                      <>
+                        <Loader size={16} className="animate-spin" />
+                        Verifying...
+                      </>
+                    ) : (
+                      "Verify OTP"
+                    )}
                   </button>
                   <button
-                    onClick={() => {
-                      const code = generateOTP();
-                      saveOTP(email, code);
-                      setCurrentOtp(code);
-                      setOtp(["", "", "", "", "", ""]);
-                      setOtpError("");
-                      toast.info("New OTP sent!");
-                    }}
-                    className="w-full text-center text-sm text-primary hover:underline"
+                    onClick={handleResendOtp}
+                    disabled={!canResend || isLoading}
+                    className="w-full text-center text-sm text-primary hover:underline disabled:text-gray-400 disabled:cursor-not-allowed"
                   >
-                    Resend OTP
+                    {canResend
+                      ? "Resend OTP"
+                      : `Resend in ${formatTime(timer)}`}
                   </button>
                 </div>
               </motion.div>
@@ -662,23 +756,35 @@ export default function Login() {
                 <form onSubmit={handleResetPassword} className="space-y-3">
                   <input
                     type="password"
-                    placeholder="New Password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none"
+                    name="password"
+                    placeholder="New Password (min 8 characters)"
+                    value={formData.password}
+                    onChange={handleFormChange}
+                    disabled={isLoading}
+                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none disabled:bg-gray-100"
                   />
                   <input
                     type="password"
+                    name="confirmPassword"
                     placeholder="Confirm New Password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none"
+                    value={formData.confirmPassword}
+                    onChange={handleFormChange}
+                    disabled={isLoading}
+                    className="w-full h-11 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none disabled:bg-gray-100"
                   />
                   <button
                     type="submit"
-                    className="w-full h-11 rounded-full bg-primary text-primary-foreground font-medium text-sm shadow-soft-md hover:scale-[1.02] active:scale-[0.98] transition-transform"
+                    disabled={isLoading}
+                    className="w-full h-11 rounded-full bg-primary text-primary-foreground font-medium text-sm shadow-soft-md hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
                   >
-                    Reset Password
+                    {isLoading ? (
+                      <>
+                        <Loader size={16} className="animate-spin" />
+                        Resetting...
+                      </>
+                    ) : (
+                      "Reset Password"
+                    )}
                   </button>
                 </form>
               </motion.div>

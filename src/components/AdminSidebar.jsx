@@ -7,7 +7,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
-import { useAppStore } from "@/lib/store";
+import { useAuth } from "@/hooks/useAuth";
 import loopyHappy from "@/assets/loopy-happy.png";
 import { toast } from "sonner";
 import {
@@ -34,7 +34,7 @@ export function AdminSidebar() {
   const collapsed = state === "collapsed";
   const navigate = useNavigate();
   const location = useLocation();
-  const logout = useAppStore((s) => s.logout);
+  const { logout } = useAuth();
 
   const handleLogout = () => {
     logout();

@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { NavLink } from "./NavLink";
 import { useNavigate } from "react-router-dom";
-import { useAppStore } from "../lib/store";
+import { useAuth } from "../hooks/useAuth";
 import loopyHappy from "../assets/loopy-happy.png";
 import { toast } from "sonner";
 import {
@@ -45,16 +45,12 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const navigate = useNavigate();
-
-  // Lấy hàm logout từ store
-  const logout = useAppStore((state) => state.logout);
+  const { logout } = useAuth();
 
   const handleLogout = () => {
-    if (logout) {
-      logout();
-      toast.success("Logged out successfully 👋");
-      navigate("/login");
-    }
+    logout();
+    toast.success("Logged out successfully 👋");
+    navigate("/login");
   };
 
   return (

@@ -19,3 +19,4 @@ export function AdminLayout({ children }) {
     </SidebarProvider>
   );
 }
+export default AdminLayout;
