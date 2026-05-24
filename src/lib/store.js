@@ -508,7 +508,8 @@ export const useAppStore = create((set, get) => ({
   deleteQuiz: (id) =>
     set((state) => ({ quizzes: state.quizzes.filter((q) => q.id !== id) })),
 
-  // Sessions
+  // Sessions (planner sync — API-backed sessions replace mock list when loaded)
+  replaceSessions: (sessions) => set({ sessions }),
   addSession: (s) =>
     set((state) => ({ sessions: [...state.sessions, { ...s, id: uid() }] })),
   addSessions: (newSessions) =>
