@@ -14,6 +14,7 @@ import {
 } from "./auth-utils";
 import {
   getSubjects,
+  getSubjectById,
   createSubject as createSubjectAPI,
   updateSubject as updateSubjectAPI,
   deleteSubject as deleteSubjectAPI,
@@ -377,6 +378,19 @@ export const useAppStore = create((set, get) => ({
       return { ok: true, data: result.data };
     }
     set({ subjectsLoading: false, subjectsError: result.message });
+    return { ok: false, message: result.message };
+  },
+
+  fetchSubjectById: async (id) => {
+    const result = await getSubjectById(id);
+    if (result.success) {
+      set((state) => ({
+        subjects: state.subjects.some((s) => s.id === id)
+          ? state.subjects.map((s) => (s.id === id ? result.data : s))
+          : [...state.subjects, result.data],
+      }));
+      return { ok: true, data: result.data };
+    }
     return { ok: false, message: result.message };
   },
 
