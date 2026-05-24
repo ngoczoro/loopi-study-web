@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BookOpen, Plus, Star, Calendar, Trash2, X, FileText, Upload, Link2, PenLine, Eye, Edit3, CalendarIcon, Play, Sparkles, Loader2 } from "lucide-react";
+import { BookOpen, Plus, Star, Calendar, Trash2, X, FileText, Upload, Link2, PenLine, Eye, Edit3, CalendarIcon, Play, Sparkles, Loader2, Brain } from "lucide-react";
 import { format, addDays, startOfDay } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
@@ -17,62 +17,40 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/alert-dialog";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/accordion";
+import { ScrollArea } from "@/components/scroll-area";
 
 const typeIcons = { note: FileText, file: Upload, link: Link2 };
 
 export default function Subjects() {
-  const { subjects, documents, addSubject, deleteSubject, addDocument, deleteDocument, updateDocument, addQuiz, addViolation } = useAppStore();
+  const { subjects, documents, quizzes, addSubject, deleteSubject, addDocument, deleteDocument, updateDocument, addQuiz, addViolation } = useAppStore();
   const navigate = useNavigate();
-  
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [deleteDocId, setDeleteDocId] = useState(null);
   const [showUpload, setShowUpload] = useState(false);
   const [activeTab, setActiveTab] = useState("note");
-  
-  const [newForm, setNewForm] = useState({ 
-    name: "", 
-    credits: "3", 
-    difficulty: "Medium", 
-    examDate: undefined, 
-    requiredHoursPerWeek: "", 
-    priority: "medium" 
-  });
-  
+  const [newForm, setNewForm] = useState({ name: "", credits: "3", difficulty: "Medium", examDate: undefined, requiredHoursPerWeek: "", priority: "medium" });
   const [examDateError, setExamDateError] = useState("");
   const [uploadForm, setUploadForm] = useState({ title: "", subjectId: "", content: "", url: "" });
   const [viewDoc, setViewDoc] = useState(null);
   const [editDoc, setEditDoc] = useState(null);
   const [editForm, setEditForm] = useState({ title: "", content: "", subjectId: "" });
 
-  // Quick AI Quiz state
+  // Quick AI Quiz state (per subject)
   const [quizSubject, setQuizSubject] = useState(null);
   const [aiTopic, setAiTopic] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiPreview, setAiPreview] = useState(null);
 
-  const openQuickQuiz = (s) => { 
-    setQuizSubject(s); 
-    setAiTopic(s.name); 
-    setAiPreview(null); 
-  };
+  const openQuickQuiz = (s) => { setQuizSubject(s); setAiTopic(s.name); setAiPreview(null); };
 
   const handleGenerateQuiz = () => {
     if (!aiTopic.trim()) { toast.error("Please enter a topic"); return; }
     const mod = moderateContent(aiTopic);
     if (mod?.flagged) {
-      addViolation({ 
-        userId: "u1", 
-        userName: "Student", 
-        userEmail: "student@example.com", 
-        type: mod.type, 
-        contentId: "", 
-        contentTitle: aiTopic, 
-        contentType: "note", 
-        detectedAt: new Date().toLocaleString(), 
-        resolved: false 
-      });
+      addViolation({ userId: "u1", userName: "Student", userEmail: "student@example.com", type: mod.type, contentId: "", contentTitle: aiTopic, contentType: "note", detectedAt: new Date().toLocaleString(), resolved: false });
       toast.error("Content flagged for moderation.");
       return;
     }
@@ -85,12 +63,7 @@ export default function Subjects() {
 
   const handleSaveQuiz = () => {
     if (!aiPreview || !quizSubject) return;
-    addQuiz({ 
-      title: aiPreview.title, 
-      subjectId: quizSubject.id, 
-      questions: aiPreview.questions, 
-      createdAt: new Date().toISOString() 
-    });
+    addQuiz({ title: aiPreview.title, subjectId: quizSubject.id, questions: aiPreview.questions, createdAt: new Date().toISOString() });
     toast.success("Quiz saved! 🎉");
     setQuizSubject(null);
     setAiPreview(null);
@@ -115,51 +88,24 @@ export default function Subjects() {
     setExamDateError("");
     const colors = ["340 82% 59%", "210 80% 60%", "142 45% 55%", "35 90% 60%", "280 60% 65%"];
     const formattedDate = format(newForm.examDate, "MMM dd");
-    addSubject({ 
-      name: newForm.name, 
-      credits: parseInt(newForm.credits), 
-      difficulty: newForm.difficulty, 
-      examDate: formattedDate, 
-      color: colors[subjects.length % colors.length], 
-      progress: 0, 
-      requiredHoursPerWeek: newForm.requiredHoursPerWeek ? parseFloat(newForm.requiredHoursPerWeek) : undefined, 
-      priority: newForm.priority 
-    });
+    addSubject({ name: newForm.name, credits: parseInt(newForm.credits), difficulty: newForm.difficulty, examDate: formattedDate, color: colors[subjects.length % colors.length], progress: 0, requiredHoursPerWeek: newForm.requiredHoursPerWeek ? parseFloat(newForm.requiredHoursPerWeek) : undefined, priority: newForm.priority });
     setShowAdd(false);
     setNewForm({ name: "", credits: "3", difficulty: "Medium", examDate: undefined, requiredHoursPerWeek: "", priority: "medium" });
     toast.success("Subject added successfully! 📚");
   };
 
   const handleDelete = () => {
-    if (deleteId) { 
-      deleteSubject(deleteId); 
-      if (selectedSubject?.id === deleteId) setSelectedSubject(null); 
-      setDeleteId(null); 
-      toast.success("Subject deleted"); 
-    }
+    if (deleteId) { deleteSubject(deleteId); if (selectedSubject?.id === deleteId) setSelectedSubject(null); setDeleteId(null); toast.success("Subject deleted"); }
   };
 
   const handleDeleteDoc = () => {
-    if (deleteDocId) { 
-      deleteDocument(deleteDocId); 
-      setDeleteDocId(null); 
-      toast.success("Document deleted"); 
-    }
+    if (deleteDocId) { deleteDocument(deleteDocId); setDeleteDocId(null); toast.success("Document deleted"); }
   };
 
   const handleUpload = () => {
     if (!uploadForm.title.trim()) { toast.error("Please add a title"); return; }
     const subId = uploadForm.subjectId || selectedSubject?.id || null;
-    addDocument({ 
-      title: uploadForm.title, 
-      type: activeTab, 
-      subjectId: subId, 
-      date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }), 
-      content: activeTab === "note" ? uploadForm.content : activeTab === "link" ? uploadForm.url : undefined, 
-      ownerId: "u1", 
-      ownerName: "Student", 
-      createdAt: new Date().toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }) 
-    });
+    addDocument({ title: uploadForm.title, type: activeTab, subjectId: subId, date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }), content: activeTab === "note" ? uploadForm.content : activeTab === "link" ? uploadForm.url : undefined, ownerId: "u1", ownerName: "Student", createdAt: new Date().toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }) });
     setShowUpload(false);
     setUploadForm({ title: "", subjectId: "", content: "", url: "" });
     setActiveTab("note");
@@ -173,16 +119,13 @@ export default function Subjects() {
 
   const handleEdit = () => {
     if (!editDoc || !editForm.title.trim()) { toast.error("Title required"); return; }
-    updateDocument(editDoc.id, { 
-      title: editForm.title, 
-      content: editForm.content || undefined, 
-      subjectId: editForm.subjectId || null 
-    });
+    updateDocument(editDoc.id, { title: editForm.title, content: editForm.content || undefined, subjectId: editForm.subjectId || null });
     setEditDoc(null);
     toast.success("Document updated! ✅");
   };
 
   const subjectDocs = selectedSubject ? documents.filter((d) => d.subjectId === selectedSubject.id) : [];
+  const subjectQuizzes = selectedSubject ? quizzes.filter((q) => q.subjectId === selectedSubject.id) : [];
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 animate-fade-in">
@@ -230,6 +173,7 @@ export default function Subjects() {
         ))}
       </div>
 
+      {/* Subject Detail Sheet */}
       <Sheet open={!!selectedSubject} onOpenChange={(o) => !o && setSelectedSubject(null)}>
         <SheetContent className="overflow-auto">
           {selectedSubject && (
@@ -269,51 +213,117 @@ export default function Subjects() {
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-foreground">Documents</h3>
-                  <button onClick={() => { setUploadForm({ ...uploadForm, subjectId: selectedSubject.id }); setShowUpload(true); }}
-                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-primary text-primary-foreground text-xs font-medium">
-                    <Plus className="h-3 w-3" strokeWidth={2} /> Upload
-                  </button>
-                </div>
-
-                {subjectDocs.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-6">No documents yet. Upload your first one!</p>
-                ) : (
-                  <div className="space-y-2">
-                    {subjectDocs.map((doc) => {
-                      const Icon = typeIcons[doc.type];
-                      return (
-                        <div key={doc.id} className="flex items-center gap-3 p-3 rounded-xl bg-background/60 hover:bg-secondary/30 transition-colors group/doc">
-                          <div className="h-8 w-8 rounded-lg bg-secondary flex items-center justify-center shrink-0">
-                            <Icon className="h-4 w-4 text-primary" strokeWidth={1.5} />
-                          </div>
-                          <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setViewDoc(doc)}>
-                            <p className="text-sm font-medium text-foreground truncate">{doc.title}</p>
-                            <p className="text-[10px] text-muted-foreground">{doc.type} · {doc.date} · {doc.createdAt}</p>
-                          </div>
-                          <div className="flex items-center gap-0.5 opacity-0 group-hover/doc:opacity-100 transition-opacity">
-                            <button onClick={() => setViewDoc(doc)} className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground">
-                              <Eye className="h-3.5 w-3.5" strokeWidth={1.5} />
-                            </button>
-                            <button onClick={() => openEdit(doc)} className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground">
-                              <Edit3 className="h-3.5 w-3.5" strokeWidth={1.5} />
-                            </button>
-                            <button onClick={() => setDeleteDocId(doc.id)} className="h-7 w-7 rounded-md hover:bg-destructive/10 flex items-center justify-center text-muted-foreground hover:text-destructive">
-                              <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
-                            </button>
-                          </div>
+                <Accordion type="multiple" defaultValue={["documents", "quizzes"]} className="space-y-2">
+                  {/* Documents Section */}
+                  <AccordionItem value="documents" className="border-none">
+                    <AccordionTrigger className="py-3 px-4 rounded-xl bg-secondary/30 hover:bg-secondary/50 hover:no-underline transition-colors data-[state=open]:rounded-b-none">
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                          <FileText className="h-3.5 w-3.5 text-primary" strokeWidth={1.5} />
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        <span className="text-sm font-semibold text-foreground">Documents</span>
+                        <span className="text-xs text-muted-foreground">({subjectDocs.length})</span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="pb-0">
+                      <div className="px-4 pb-4 pt-1 bg-secondary/30 rounded-b-xl">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs text-muted-foreground">Study materials & notes</span>
+                          <button onClick={(e) => { e.stopPropagation(); setUploadForm({ ...uploadForm, subjectId: selectedSubject.id }); setShowUpload(true); }}
+                            className="inline-flex items-center gap-1 h-7 px-3 rounded-full bg-primary text-primary-foreground text-[11px] font-medium">
+                            <Plus className="h-3 w-3" strokeWidth={2} /> Upload
+                          </button>
+                        </div>
+                        {subjectDocs.length === 0 ? (
+                          <p className="text-sm text-muted-foreground text-center py-4">No documents yet. Upload your first one!</p>
+                        ) : (
+                          <ScrollArea className="max-h-60 rounded-xl">
+                            <div className="space-y-1.5 pr-2">
+                              {subjectDocs.map((doc) => {
+                                const Icon = typeIcons[doc.type];
+                                return (
+                                  <div key={doc.id} className="flex items-center gap-3 p-2.5 rounded-xl bg-background/60 hover:bg-secondary/30 transition-colors group/doc">
+                                    <div className="h-8 w-8 rounded-lg bg-secondary flex items-center justify-center shrink-0">
+                                      <Icon className="h-4 w-4 text-primary" strokeWidth={1.5} />
+                                    </div>
+                                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setViewDoc(doc)}>
+                                      <p className="text-sm font-medium text-foreground truncate">{doc.title}</p>
+                                      <p className="text-[10px] text-muted-foreground">{doc.type} · {doc.date} · {doc.createdAt}</p>
+                                    </div>
+                                    <div className="flex items-center gap-0.5 opacity-0 group-hover/doc:opacity-100 transition-opacity">
+                                      <button onClick={() => setViewDoc(doc)} className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground">
+                                        <Eye className="h-3.5 w-3.5" strokeWidth={1.5} />
+                                      </button>
+                                      <button onClick={() => openEdit(doc)} className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground">
+                                        <Edit3 className="h-3.5 w-3.5" strokeWidth={1.5} />
+                                      </button>
+                                      <button onClick={() => setDeleteDocId(doc.id)} className="h-7 w-7 rounded-md hover:bg-destructive/10 flex items-center justify-center text-muted-foreground hover:text-destructive">
+                                        <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </ScrollArea>
+                        )}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+
+                  {/* Quizzes Section */}
+                  <AccordionItem value="quizzes" className="border-none">
+                    <AccordionTrigger className="py-3 px-4 rounded-xl bg-secondary/30 hover:bg-secondary/50 hover:no-underline transition-colors data-[state=open]:rounded-b-none">
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                          <Brain className="h-3.5 w-3.5 text-primary" strokeWidth={1.5} />
+                        </div>
+                        <span className="text-sm font-semibold text-foreground">Quizzes</span>
+                        <span className="text-xs text-muted-foreground">({subjectQuizzes.length})</span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="pb-0">
+                      <div className="px-4 pb-4 pt-1 bg-secondary/30 rounded-b-xl">
+                        {subjectQuizzes.length === 0 ? (
+                          <div className="text-center py-5">
+                            <p className="text-sm text-muted-foreground mb-3">No quizzes for this subject yet.</p>
+                            <button onClick={() => openQuickQuiz(selectedSubject)}
+                              className="inline-flex items-center gap-1.5 h-8 px-4 rounded-full bg-primary text-primary-foreground text-xs font-medium hover:scale-[1.02] transition-transform">
+                              <Sparkles className="h-3.5 w-3.5" strokeWidth={2} /> Generate Quiz
+                            </button>
+                          </div>
+                        ) : (
+                          <ScrollArea className="max-h-60 rounded-xl">
+                            <div className="space-y-1.5 pr-2">
+                              {subjectQuizzes.map((quiz) => (
+                                <div key={quiz.id} className="flex items-center gap-3 p-2.5 rounded-xl bg-background/60 hover:bg-secondary/30 transition-colors group/quiz">
+                                  <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                                    <Brain className="h-4 w-4 text-primary" strokeWidth={1.5} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-foreground truncate">{quiz.title}</p>
+                                    <p className="text-[10px] text-muted-foreground">{quiz.questions.length} questions · {new Date(quiz.createdAt).toLocaleDateString()}</p>
+                                  </div>
+                                  <button onClick={() => navigate("/quiz", { state: { activeQuizId: quiz.id } })}
+                                    className="h-7 px-3 rounded-full bg-primary/10 text-primary text-[11px] font-medium opacity-0 group-hover/quiz:opacity-100 transition-opacity hover:bg-primary/20 shrink-1">
+                                    Take Quiz
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        )}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
               </div>
             </>
           )}
         </SheetContent>
       </Sheet>
 
+      {/* View Doc Detail Modal */}
       <AnimatePresence>
         {viewDoc && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center">
@@ -359,6 +369,7 @@ export default function Subjects() {
         )}
       </AnimatePresence>
 
+      {/* Edit Doc Modal */}
       <AnimatePresence>
         {editDoc && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center">
@@ -388,6 +399,7 @@ export default function Subjects() {
         )}
       </AnimatePresence>
 
+      {/* Add Subject Dialog */}
       <AnimatePresence>
         {showAdd && (
           <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -448,6 +460,7 @@ export default function Subjects() {
         )}
       </AnimatePresence>
 
+      {/* Upload Document Dialog */}
       <AnimatePresence>
         {showUpload && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center">
@@ -511,6 +524,7 @@ export default function Subjects() {
         )}
       </AnimatePresence>
 
+      {/* Delete Subject Confirmation */}
       <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -524,6 +538,7 @@ export default function Subjects() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Delete Doc Confirmation */}
       <AlertDialog open={!!deleteDocId} onOpenChange={(o) => !o && setDeleteDocId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -537,6 +552,7 @@ export default function Subjects() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Quick AI Quiz Modal */}
       <AnimatePresence>
         {quizSubject && (
           <div className="fixed inset-0 z-[70] flex items-center justify-center">
