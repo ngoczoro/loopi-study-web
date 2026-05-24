@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BookOpen, Plus, Star, Calendar, Trash2, X, FileText, Upload, Link2, PenLine, Eye, Edit3, CalendarIcon, Play, Sparkles, Loader2, Brain } from "lucide-react";
+import { BookOpen, Plus, Star, Calendar, Trash2, X, FileText, Upload, Link2, PenLine, Eye, Edit3, CalendarIcon, Play, Sparkles, Loader2 } from "lucide-react";
 import { format, addDays, startOfDay } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
@@ -22,8 +22,19 @@ import { ScrollArea } from "@/components/scroll-area";
 
 const typeIcons = { note: FileText, file: Upload, link: Link2 };
 
+const formatExamDate = (examDate) => {
+  if (!examDate) return "";
+  try {
+    const parsed = new Date(`${examDate}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return examDate;
+    return format(parsed, "MMM dd");
+  } catch {
+    return examDate;
+  }
+};
+
 export default function Subjects() {
-  const { subjects, documents, quizzes, addSubject, deleteSubject, addDocument, deleteDocument, updateDocument, addQuiz, addViolation } = useAppStore();
+  const { subjects, documents, addSubject, deleteSubject, addDocument, deleteDocument, updateDocument, addQuiz, addViolation } = useAppStore();
   const navigate = useNavigate();
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -43,6 +54,17 @@ export default function Subjects() {
   const [aiTopic, setAiTopic] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiPreview, setAiPreview] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetchSubjects();
+  }, [fetchSubjects]);
+
+  useEffect(() => {
+    if (subjectsError) {
+      toast.error(subjectsError);
+    }
+  }, [subjectsError]);
 
   const openQuickQuiz = (s) => { setQuizSubject(s); setAiTopic(s.name); setAiPreview(null); };
 
@@ -79,7 +101,7 @@ export default function Subjects() {
 
   const tomorrow = addDays(startOfDay(new Date()), 1);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!newForm.name.trim()) return;
     if (!newForm.examDate || newForm.examDate <= new Date()) {
       setExamDateError("Please select a future date");
@@ -88,14 +110,35 @@ export default function Subjects() {
     setExamDateError("");
     const colors = ["340 82% 59%", "210 80% 60%", "142 45% 55%", "35 90% 60%", "280 60% 65%"];
     const formattedDate = format(newForm.examDate, "MMM dd");
-    addSubject({ name: newForm.name, credits: parseInt(newForm.credits), difficulty: newForm.difficulty, examDate: formattedDate, color: colors[subjects.length % colors.length], progress: 0, requiredHoursPerWeek: newForm.requiredHoursPerWeek ? parseFloat(newForm.requiredHoursPerWeek) : undefined, priority: newForm.priority });
+    addSubject({ 
+      name: newForm.name, 
+      credits: parseInt(newForm.credits), 
+      difficulty: newForm.difficulty, 
+      examDate: formattedDate, 
+      color: colors[subjects.length % colors.length], 
+      progress: 0, 
+      requiredHoursPerWeek: newForm.requiredHoursPerWeek ? parseFloat(newForm.requiredHoursPerWeek) : undefined, 
+      priority: newForm.priority 
+    });
     setShowAdd(false);
-    setNewForm({ name: "", credits: "3", difficulty: "Medium", examDate: undefined, requiredHoursPerWeek: "", priority: "medium" });
+    setNewForm({
+      name: "",
+      credits: "3",
+      difficulty: "Medium",
+      examDate: undefined,
+      requiredHoursPerWeek: "",
+      priority: "medium",
+    });
     toast.success("Subject added successfully! 📚");
   };
 
   const handleDelete = () => {
-    if (deleteId) { deleteSubject(deleteId); if (selectedSubject?.id === deleteId) setSelectedSubject(null); setDeleteId(null); toast.success("Subject deleted"); }
+    if (deleteId) { 
+      deleteSubject(deleteId); 
+      if (selectedSubject?.id === deleteId) setSelectedSubject(null); 
+      setDeleteId(null); 
+      toast.success("Subject deleted"); 
+    }
   };
 
   const handleDeleteDoc = () => {
@@ -141,7 +184,18 @@ export default function Subjects() {
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {subjects.map((subject, i) => (
+        {subjectsLoading && subjects.length === 0 ? (
+          <div className="col-span-full flex items-center justify-center py-16 text-muted-foreground">
+            <Loader2 className="h-6 w-6 animate-spin mr-2" />
+            Loading subjects...
+          </div>
+        ) : subjects.length === 0 ? (
+          <div className="col-span-full text-center py-16 text-muted-foreground">
+            <BookOpen className="h-10 w-10 mx-auto mb-3 opacity-40" strokeWidth={1.5} />
+            <p className="text-sm">No subjects yet. Add your first course to get started.</p>
+          </div>
+        ) : (
+        subjects.map((subject, i) => (
           <motion.div key={subject.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
             className="bg-card rounded-2xl p-5 shadow-soft hover:shadow-soft-md transition-shadow cursor-pointer group relative"
             onClick={() => setSelectedSubject(subject)}>
@@ -157,7 +211,7 @@ export default function Subjects() {
             <h3 className="text-base font-semibold text-foreground mb-1 group-hover:text-primary transition-colors">{subject.name}</h3>
             <div className="flex items-center gap-3 text-xs text-muted-foreground mb-2">
               <span className="flex items-center gap-1"><Star className="h-3 w-3" strokeWidth={1.5} />{subject.credits} credits</span>
-              <span className="flex items-center gap-1"><Calendar className="h-3 w-3" strokeWidth={1.5} />{subject.examDate}</span>
+              <span className="flex items-center gap-1"><Calendar className="h-3 w-3" strokeWidth={1.5} />{formatExamDate(subject.examDate)}</span>
             </div>
             <div className="flex items-center gap-2 mb-3">
               <span className={`text-[10px] uppercase tracking-widest font-bold px-2 py-0.5 rounded-full ${subject.difficulty === "Hard" ? "bg-destructive/10 text-destructive" : subject.difficulty === "Medium" ? "bg-warning/20 text-foreground" : "bg-accent/20 text-accent-foreground"}`}>{subject.difficulty}</span>
@@ -170,7 +224,8 @@ export default function Subjects() {
             </div>
             <p className="text-[11px] text-muted-foreground mt-1.5">{subject.progress}% complete</p>
           </motion.div>
-        ))}
+        ))
+        )}
       </div>
 
       {/* Subject Detail Sheet */}
@@ -192,7 +247,7 @@ export default function Subjects() {
                   {[
                     { label: "Credits", value: selectedSubject.credits },
                     { label: "Difficulty", value: selectedSubject.difficulty },
-                    { label: "Exam Date", value: selectedSubject.examDate },
+                    { label: "Exam Date", value: formatExamDate(selectedSubject.examDate) },
                     { label: "Progress", value: `${selectedSubject.progress}%` },
                   ].map((item) => (
                     <div key={item.label} className="bg-secondary/40 rounded-xl p-3">
@@ -452,8 +507,10 @@ export default function Subjects() {
                     <option value="high">High priority</option>
                   </select>
                 </div>
-                <button onClick={handleAdd}
-                  className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform">Add Subject</button>
+                <button onClick={handleAdd} disabled={isSubmitting}
+                  className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform disabled:opacity-50 flex items-center justify-center gap-2">
+                  {isSubmitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Adding...</> : "Add Subject"}
+                </button>
               </div>
             </motion.div>
           </div>
@@ -533,7 +590,9 @@ export default function Subjects() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete} disabled={isSubmitting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {isSubmitting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

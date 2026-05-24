@@ -12,16 +12,24 @@ import {
   verifyOTP,
   clearOTP,
 } from "./auth-utils";
+import {
+  getSubjects,
+  createSubject as createSubjectAPI,
+  updateSubject as updateSubjectAPI,
+  deleteSubject as deleteSubjectAPI,
+} from "../services/subjectService";
 
 /**
  * @typedef {Object} Subject
  * @property {string} id
  * @property {string} name
- * @property {number} credits
- * @property {"Easy" | "Medium" | "Hard"} difficulty
- * @property {string} examDate
- * @property {string} color
+ * @property {number|null} credits
+ * @property {"Easy"|"Medium"|"Hard"|null} difficulty
+ * @property {string|null} examDate
+ * @property {string|null} color
  * @property {number} progress
+ * @property {"low"|"medium"|"high"|null} priority
+ * @property {number|null} requiredHoursPerWeek
  */
 
 /**
@@ -121,53 +129,9 @@ export const useAppStore = create((set, get) => ({
     })),
 
   // --- MAIN DATA STATE ---
-  subjects: [
-    {
-      id: "s1",
-      name: "Mathematics",
-      credits: 4,
-      difficulty: "Hard",
-      examDate: "Mar 28",
-      color: "340 82% 59%",
-      progress: 65,
-    },
-    {
-      id: "s2",
-      name: "Computer Science",
-      credits: 3,
-      difficulty: "Medium",
-      examDate: "Apr 02",
-      color: "210 80% 60%",
-      progress: 80,
-    },
-    {
-      id: "s3",
-      name: "Biology",
-      credits: 3,
-      difficulty: "Medium",
-      examDate: "Apr 05",
-      color: "142 45% 55%",
-      progress: 45,
-    },
-    {
-      id: "s4",
-      name: "French",
-      credits: 2,
-      difficulty: "Easy",
-      examDate: "Apr 10",
-      color: "35 90% 60%",
-      progress: 30,
-    },
-    {
-      id: "s5",
-      name: "History",
-      credits: 3,
-      difficulty: "Medium",
-      examDate: "Apr 12",
-      color: "280 60% 65%",
-      progress: 55,
-    },
-  ],
+  subjects: [],
+  subjectsLoading: false,
+  subjectsError: null,
 
   documents: [
     {
@@ -405,16 +369,63 @@ export const useAppStore = create((set, get) => ({
   // --- ACTIONS ---
 
   // Subjects
-  addSubject: (s) =>
-    set((state) => ({ subjects: [...state.subjects, { ...s, id: uid() }] })),
-  updateSubject: (id, updates) =>
-    set((state) => ({
-      subjects: state.subjects.map((s) =>
-        s.id === id ? { ...s, ...updates } : s,
-      ),
-    })),
-  deleteSubject: (id) =>
-    set((state) => ({ subjects: state.subjects.filter((s) => s.id !== id) })),
+  fetchSubjects: async () => {
+    set({ subjectsLoading: true, subjectsError: null });
+    const result = await getSubjects();
+    if (result.success) {
+      set({ subjects: result.data, subjectsLoading: false, subjectsError: null });
+      return { ok: true, data: result.data };
+    }
+    set({ subjectsLoading: false, subjectsError: result.message });
+    return { ok: false, message: result.message };
+  },
+
+  addSubject: async (payload) => {
+    set({ subjectsLoading: true, subjectsError: null });
+    const result = await createSubjectAPI(payload);
+    if (result.success) {
+      set((state) => ({
+        subjects: [result.data, ...state.subjects],
+        subjectsLoading: false,
+        subjectsError: null,
+      }));
+      return { ok: true, data: result.data };
+    }
+    set({ subjectsLoading: false, subjectsError: result.message });
+    return { ok: false, message: result.message };
+  },
+
+  updateSubject: async (id, updates) => {
+    set({ subjectsLoading: true, subjectsError: null });
+    const result = await updateSubjectAPI(id, updates);
+    if (result.success) {
+      set((state) => ({
+        subjects: state.subjects.map((s) =>
+          s.id === id ? result.data : s,
+        ),
+        subjectsLoading: false,
+        subjectsError: null,
+      }));
+      return { ok: true, data: result.data };
+    }
+    set({ subjectsLoading: false, subjectsError: result.message });
+    return { ok: false, message: result.message };
+  },
+
+  deleteSubject: async (id) => {
+    set({ subjectsLoading: true, subjectsError: null });
+    const result = await deleteSubjectAPI(id);
+    if (result.success) {
+      set((state) => ({
+        subjects: state.subjects.filter((s) => s.id !== id),
+        subjectsLoading: false,
+        subjectsError: null,
+      }));
+      return { ok: true };
+    }
+    set({ subjectsLoading: false, subjectsError: result.message });
+    return { ok: false, message: result.message };
+  },
 
   // Documents
   addDocument: (d) =>
