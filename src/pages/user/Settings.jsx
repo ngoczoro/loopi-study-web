@@ -1,67 +1,144 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { User, Lock, Bell, Calendar } from "lucide-react";
 import loopyHappy from "@/assets/loopy-happy.png";
-import { useAppStore } from "@/lib/store";
+import { useAuthStore } from "@/lib/authStore";
+import {
+  changePassword as changePasswordAPI,
+  getBlockedSlots,
+  getMe,
+  getPreferences,
+  replaceBlockedSlots,
+  updateMe,
+  updatePreferences,
+} from "@/services/userService";
 import { toast } from "sonner";
 
 const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const hours = Array.from({ length: 24 }, (_, i) => i);
 
 export default function Settings() {
-  const {
-    blockedSlots,
-    toggleBlockedSlot,
-    currentUser,
-    updateUser,
-    changePassword,
-    preferences,
-    updatePreferences,
-  } = useAppStore();
+  const user = useAuthStore((s) => s.user);
+  const setUser = useAuthStore((s) => s.setUser);
 
   const [blockMode, setBlockMode] = useState("block");
+  const [loading, setLoading] = useState(true);
+  const [blockedSlots, setBlockedSlots] = useState([]);
 
-  const [displayName, setDisplayName] = useState(
-    currentUser?.username || "Study Beaver",
-  );
-  const [email, setEmail] = useState(
-    currentUser?.email || "student@university.edu",
-  );
+  const [displayName, setDisplayName] = useState(user?.fullName || "");
+  const [email, setEmail] = useState(user?.email || "");
 
   const [oldPw, setOldPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
 
-  const [notificationSettings, setNotificationSettings] = useState(
-    preferences?.notifications || {},
-  );
+  const [notificationSettings, setNotificationSettings] = useState({
+    taskReminders: true,
+    sessionReminders: true,
+    deadlineAlerts: true,
+  });
+
+  const loadSettings = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [profileRes, prefsRes, slotsRes] = await Promise.all([
+        getMe(),
+        getPreferences(),
+        getBlockedSlots(),
+      ]);
+
+      if (profileRes.success) {
+        setDisplayName(profileRes.data.fullName || "");
+        setEmail(profileRes.data.email || "");
+        setUser(profileRes.data);
+      } else {
+        toast.error(profileRes.message);
+      }
+
+      if (prefsRes.success) {
+        setNotificationSettings(
+          prefsRes.data.notifications || {
+            taskReminders: true,
+            sessionReminders: true,
+            deadlineAlerts: true,
+          },
+        );
+      } else {
+        toast.error(prefsRes.message);
+      }
+
+      if (slotsRes.success) {
+        setBlockedSlots(slotsRes.data || []);
+      } else {
+        toast.error(slotsRes.message);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [setUser]);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
 
   const isBlocked = (day, hour) =>
     blockedSlots.some((s) => s.day === day && s.hour === hour);
 
-  const handleSlotClick = (day, hour) => {
+  const persistBlockedSlots = async (nextSlots) => {
+    setBlockedSlots(nextSlots);
+    const result = await replaceBlockedSlots(nextSlots);
+
+    if (!result.success) {
+      toast.error(result.message);
+      const reload = await getBlockedSlots();
+      if (reload.success) {
+        setBlockedSlots(reload.data || []);
+      }
+      return false;
+    }
+
+    setBlockedSlots(result.data || []);
+    return true;
+  };
+
+  const handleSlotClick = async (day, hour) => {
     const blocked = isBlocked(day, hour);
+    let nextSlots;
 
     if (blockMode === "block" && !blocked) {
-      toggleBlockedSlot(day, hour);
-      toast.success("Time blocked successfully");
+      nextSlots = [...blockedSlots, { day, hour }];
     } else if (blockMode === "unblock" && blocked) {
-      toggleBlockedSlot(day, hour);
-      toast.success("Time unblocked");
+      nextSlots = blockedSlots.filter(
+        (s) => !(s.day === day && s.hour === hour),
+      );
+    } else {
+      return;
+    }
+
+    const ok = await persistBlockedSlots(nextSlots);
+    if (ok) {
+      toast.success(blocked ? "Time unblocked" : "Time blocked successfully");
     }
   };
 
-  const handleSaveProfile = () => {
-    if (currentUser && displayName.trim()) {
-      // Update username
-      updateUser(currentUser.id, {
-        username: displayName.trim(),
-        email: email.trim(),
-      });
+  const handleSaveProfile = async () => {
+    if (!displayName.trim()) {
+      toast.error("Display name is required");
+      return;
+    }
+
+    const result = await updateMe({ fullName: displayName.trim() });
+
+    if (result.success) {
+      setUser(result.data);
+      setDisplayName(result.data.fullName || "");
+      setEmail(result.data.email || "");
       toast.success("Profile updated!");
+    } else {
+      toast.error(result.message);
     }
   };
 
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
     if (!oldPw || !newPw || !confirmPw) {
       toast.error("Please fill in all password fields");
       return;
@@ -72,8 +149,8 @@ export default function Settings() {
       return;
     }
 
-    if (newPw.length < 6) {
-      toast.error("Password must be at least 6 characters");
+    if (newPw.length < 8) {
+      toast.error("Password must be at least 8 characters");
       return;
     }
 
@@ -82,33 +159,44 @@ export default function Settings() {
       return;
     }
 
-    const result = changePassword(oldPw, newPw);
-    if (result.ok) {
+    const result = await changePasswordAPI({
+      currentPassword: oldPw,
+      newPassword: newPw,
+      confirmPassword: confirmPw,
+    });
+
+    if (result.success) {
       setOldPw("");
       setNewPw("");
       setConfirmPw("");
       toast.success("Password changed successfully!");
     } else {
-      if (result.reason === "invalid-old-password") {
-        toast.error("Current password is incorrect");
-      } else if (result.reason === "not-logged-in") {
-        toast.error("Please log in again");
-      } else {
-        toast.error("Failed to change password");
-      }
+      toast.error(result.message);
     }
   };
 
-  const handleToggleNotification = (key) => {
+  const handleToggleNotification = async (key) => {
     const updated = {
       ...notificationSettings,
       [key]: !notificationSettings[key],
     };
-    setNotificationSettings(updated);
-    updatePreferences({
-      notifications: updated,
-    });
+
+    const result = await updatePreferences({ notifications: { [key]: updated[key] } });
+
+    if (result.success) {
+      setNotificationSettings(result.data.notifications);
+    } else {
+      toast.error(result.message);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto p-8 text-center text-muted-foreground">
+        Loading settings…
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
@@ -134,10 +222,10 @@ export default function Settings() {
           />
           <div>
             <p className="font-medium text-foreground">
-              {currentUser?.username || "Study Beaver"}
+              {user?.fullName || displayName || "Study Beaver"}
             </p>
             <p className="text-sm text-muted-foreground">
-              {currentUser?.email || "student@university.edu"}
+              {user?.email || email}
             </p>
           </div>
         </div>
@@ -275,12 +363,13 @@ export default function Settings() {
                     <div className="text-[10px] text-muted-foreground font-medium text-right pr-2 py-1">
                       {hour}:00
                     </div>
-                    {days.map((_, di) => {
-                      const blocked = isBlocked(di, hour);
+                    {days.map((day) => {
+                      const blocked = isBlocked(day, hour);
                       return (
                         <button
-                          key={`${hour}-${di}`}
-                          onClick={() => handleSlotClick(di, hour)}
+                          key={`${day}-${hour}`}
+                          type="button"
+                          onClick={() => handleSlotClick(day, hour)}
                           className={`h-6 rounded-sm border transition-colors ${
                             blocked
                               ? "bg-destructive/20 border-destructive/30 hover:bg-destructive/30"
@@ -304,6 +393,7 @@ function ToggleSwitch({ label, value = true, onChange }) {
     <label className="flex items-center justify-between cursor-pointer">
       <span className="text-sm text-foreground">{label}</span>
       <button
+        type="button"
         onClick={() => {
           onChange();
         }}

@@ -31,6 +31,13 @@ export const useAuthStore = create(
       setLoading: (isLoading) => set({ isLoading }),
       setError: (error) => set({ error }),
 
+      setUser: (user) => {
+        set({ user });
+        if (user) {
+          localStorage.setItem("user", JSON.stringify(user));
+        }
+      },
+
       /**
        * Register user
        */
