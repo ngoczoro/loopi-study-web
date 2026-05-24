@@ -47,10 +47,11 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const { logout } = useAuth();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     toast.success("Logged out successfully 👋");
-    navigate("/login");
+    // Use window.location to force page reload and ensure clean state
+    window.location.href = "/login";
   };
 
   return (
@@ -70,16 +71,24 @@ export function AppSidebar() {
             <SidebarMenu>
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild className="h-11 rounded-xl transition-all duration-200">
+                  <SidebarMenuButton
+                    asChild
+                    className="h-11 rounded-xl transition-all duration-200"
+                  >
                     <NavLink
                       to={item.url}
                       end={item.url === "/"}
                       className="flex items-center gap-3 px-3 text-muted-foreground hover:bg-secondary/60"
                       activeClassName="bg-primary text-primary-foreground shadow-soft-md hover:bg-primary"
                     >
-                      <item.icon className="h-[18px] w-[18px]" strokeWidth={1.5} />
+                      <item.icon
+                        className="h-[18px] w-[18px]"
+                        strokeWidth={1.5}
+                      />
                       {!collapsed && (
-                        <span className="text-sm font-medium">{item.title}</span>
+                        <span className="text-sm font-medium">
+                          {item.title}
+                        </span>
                       )}
                     </NavLink>
                   </SidebarMenuButton>

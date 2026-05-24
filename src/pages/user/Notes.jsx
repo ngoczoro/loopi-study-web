@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   FileText,
   Upload,
@@ -24,6 +24,12 @@ import {
   moderateContent,
 } from "@/lib/ai-utils";
 import {
+  getNotesAPI,
+  createNoteAPI,
+  updateNoteAPI,
+  deleteNoteAPI,
+} from "@/services/noteService";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -48,6 +54,10 @@ export default function Notes() {
     addQuiz,
     addViolation,
   } = useAppStore();
+
+  const [notes, setNotes] = useState([]);
+  const [isLoadingNotes, setIsLoadingNotes] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
@@ -76,7 +86,27 @@ export default function Notes() {
   const [suggestions, setSuggestions] = useState([]);
   const [suggestSubjectId, setSuggestSubjectId] = useState("");
 
-  const filtered = documents.filter((d) =>
+  // Load notes on component mount
+  useEffect(() => {
+    loadNotes();
+  }, []);
+
+  const loadNotes = async () => {
+    setIsLoadingNotes(true);
+    const result = await getNotesAPI();
+
+    if (result.success) {
+      setNotes(result.data);
+    } else {
+      toast.error(result.message || "Failed to load notes");
+      console.error("Error loading notes:", result.error);
+    }
+    setIsLoadingNotes(false);
+  };
+
+  // Use notes from API if available, fallback to documents from store
+  const displayedNotes = notes.length > 0 ? notes : documents;
+  const filtered = displayedNotes.filter((d) =>
     d.title.toLowerCase().includes(search.toLowerCase()),
   );
 
@@ -85,7 +115,7 @@ export default function Notes() {
     return subjects.find((s) => s.id === subjectId)?.name || "Unknown";
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!form.title.trim()) {
       toast.error("Please add a title");
       return;
@@ -117,34 +147,65 @@ export default function Notes() {
       return;
     }
 
-    addDocument({
-      title: form.title,
-      type: activeTab,
-      subjectId: form.subjectId || null,
-      date: new Date().toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      }),
+    setIsSubmitting(true);
+    const result = await createNoteAPI(
+      form.title,
       content,
-      ownerId: "u1",
-      ownerName: "Student",
-      createdAt: new Date().toLocaleString("en-US", {
-        month: "short",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    });
+      form.subjectId || null,
+    );
 
-    setShowAdd(false);
-    setForm({ title: "", subjectId: "", content: "", url: "" });
+    if (result.success) {
+      // Add to local state
+      setNotes([...notes, result.data]);
 
-    toast.success("Added successfully");
+      // Also add to store for backward compatibility
+      addDocument({
+        title: form.title,
+        type: activeTab,
+        subjectId: form.subjectId || null,
+        date: new Date().toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        }),
+        content,
+        ownerId: "u1",
+        ownerName: "Student",
+        createdAt: new Date().toLocaleString("en-US", {
+          month: "short",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      });
+
+      setShowAdd(false);
+      setForm({ title: "", subjectId: "", content: "", url: "" });
+      toast.success("Note created successfully");
+    } else {
+      toast.error(result.message || "Failed to create note");
+      console.error("Error creating note:", result.error);
+    }
+    setIsSubmitting(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (deleteId) {
-      deleteDocument(deleteId);
+      setIsSubmitting(true);
+      const result = await deleteNoteAPI(deleteId);
+
+      if (result.success) {
+        // Remove from local state
+        setNotes(notes.filter((n) => n.id !== deleteId));
+
+        // Also remove from store for backward compatibility
+        deleteDocument(deleteId);
+
+        toast.success("Note deleted successfully");
+      } else {
+        toast.error(result.message || "Failed to delete note");
+        console.error("Error deleting note:", result.error);
+      }
+      setIsSubmitting(false);
       setDeleteId(null);
     }
   };
@@ -158,16 +219,36 @@ export default function Notes() {
     });
   };
 
-  const handleEdit = () => {
+  const handleEdit = async () => {
     if (!editDoc || !editForm.title.trim()) return;
 
-    updateDocument(editDoc.id, {
+    setIsSubmitting(true);
+    const result = await updateNoteAPI(editDoc.id, {
       title: editForm.title,
       content: editForm.content,
       subjectId: editForm.subjectId || null,
     });
 
-    setEditDoc(null);
+    if (result.success) {
+      // Update local state
+      setNotes(
+        notes.map((n) => (n.id === editDoc.id ? { ...n, ...editForm } : n)),
+      );
+
+      // Also update store for backward compatibility
+      updateDocument(editDoc.id, {
+        title: editForm.title,
+        content: editForm.content,
+        subjectId: editForm.subjectId || null,
+      });
+
+      setEditDoc(null);
+      toast.success("Note updated successfully");
+    } else {
+      toast.error(result.message || "Failed to update note");
+      console.error("Error updating note:", result.error);
+    }
+    setIsSubmitting(false);
   };
 
   // ===== AI ===== Summarize document
@@ -528,9 +609,17 @@ export default function Notes() {
                 </select>
                 <button
                   onClick={handleEdit}
-                  className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] active:scale-[0.98] transition-transform"
+                  disabled={isSubmitting}
+                  className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  Save Changes
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save Changes"
+                  )}
                 </button>
               </div>
             </motion.div>
@@ -657,13 +746,23 @@ export default function Notes() {
                 </select>
                 <button
                   onClick={handleAdd}
-                  className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] active:scale-[0.98] transition-transform"
+                  disabled={isSubmitting}
+                  className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  {activeTab === "file"
-                    ? "Upload File"
-                    : activeTab === "note"
-                      ? "Save Note"
-                      : "Add Link"}
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      {activeTab === "file"
+                        ? "Upload File"
+                        : activeTab === "note"
+                          ? "Save Note"
+                          : "Add Link"}
+                    </>
+                  )}
                 </button>
               </div>
             </motion.div>
@@ -787,9 +886,17 @@ export default function Notes() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isSubmitting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Delete
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

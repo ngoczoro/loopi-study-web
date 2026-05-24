@@ -36,10 +36,11 @@ export function AdminSidebar() {
   const location = useLocation();
   const { logout } = useAuth();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     toast.success("Logged out successfully");
-    navigate("/login");
+    // Use window.location to force page reload and ensure clean state
+    window.location.href = "/login";
   };
 
   return (
