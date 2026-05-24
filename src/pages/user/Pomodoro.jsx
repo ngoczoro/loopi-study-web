@@ -14,6 +14,12 @@ import loopyStudying from "@/assets/loopy-studying.png";
 import loopySleepy from "@/assets/loopy-sleepy.png";
 import { useAppStore } from "@/lib/store";
 import { toast } from "sonner";
+import {
+  startPomodoroSessionAPI,
+  pausePomodoroSessionAPI,
+  resumePomodoroSessionAPI,
+  completePomodoroSessionAPI,
+} from "@/services/pomodoroService";
 
 const MAX_WORK_MINUTES = 45;
 
@@ -29,6 +35,7 @@ export default function Pomodoro() {
   const { subjects, sessions } = useAppStore();
 
   const subjectId = params.get("subjectId");
+  const studySessionId = params.get("studySessionId");
   const studyPlanId = params.get("studyPlanId");
 
   const subject = subjects.find((s) => s.id === subjectId) || null;
@@ -85,11 +92,12 @@ export default function Pomodoro() {
       subjectName={subject.name}
       priority={priority}
       planTitle={planSession?.title}
+      studySessionId={studySessionId}
     />
   );
 }
 
-function PomodoroTimer({ subjectName, priority, planTitle }) {
+function PomodoroTimer({ subjectName, priority, planTitle, studySessionId }) {
   const navigate = useNavigate();
 
   const suggested = suggestWorkMinutes(priority);
@@ -102,6 +110,8 @@ function PomodoroTimer({ subjectName, priority, planTitle }) {
   const [isRunning, setIsRunning] = useState(false);
   const [isBreak, setIsBreak] = useState(false);
   const [completed, setCompleted] = useState(0);
+  const [pomodoroSessionId, setPomodoroSessionId] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const intervalRef = useRef(null);
 
@@ -114,27 +124,91 @@ function PomodoroTimer({ subjectName, priority, planTitle }) {
       intervalRef.current = setInterval(() => {
         setSeconds((s) => s - 1);
       }, 1000);
-    } else if (seconds === 0) {
+    } else if (seconds === 0 && started && !isBreak) {
+      // Work session completed
       setIsRunning(false);
 
-      if (!isBreak) {
-        setCompleted((s) => s + 1);
-        toast.success(`Focus session complete! 🎉 (${subjectName})`);
-        setIsBreak(true);
-        setSeconds(breakMinutes * 60);
-      } else {
-        setIsBreak(false);
-        setSeconds(workMinutes * 60);
+      if (pomodoroSessionId && studySessionId) {
+        handleCompletePomodoroSession();
       }
+
+      setCompleted((s) => s + 1);
+      toast.success(`Focus session complete! 🎉 (${subjectName})`);
+      setIsBreak(true);
+      setSeconds(breakMinutes * 60);
+    } else if (seconds === 0 && started && isBreak) {
+      // Break completed, ready for next session
+      setIsBreak(false);
+      setSeconds(workMinutes * 60);
     }
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [isRunning, seconds, isBreak, breakMinutes, workMinutes, subjectName]);
+  }, [
+    isRunning,
+    seconds,
+    isBreak,
+    breakMinutes,
+    workMinutes,
+    subjectName,
+    pomodoroSessionId,
+    studySessionId,
+    started,
+  ]);
 
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
+
+  // API handlers
+  const handleStartPomodoro = async () => {
+    if (!studySessionId) return; // Skip API if no studySessionId
+
+    setIsLoading(true);
+    const result = await startPomodoroSessionAPI(studySessionId, 1);
+
+    if (result.success) {
+      setPomodoroSessionId(result.data.id);
+      toast.success("Pomodoro session started!");
+    } else {
+      toast.error(result.message || "Failed to start pomodoro session");
+      console.error("Error starting pomodoro:", result.error);
+    }
+    setIsLoading(false);
+  };
+
+  const handlePausePomodoro = async () => {
+    if (!pomodoroSessionId) return;
+
+    const result = await pausePomodoroSessionAPI(pomodoroSessionId);
+    if (!result.success) {
+      toast.error(result.message || "Failed to pause session");
+    }
+  };
+
+  const handleResumePomodoro = async () => {
+    if (!pomodoroSessionId) return;
+
+    const result = await resumePomodoroSessionAPI(pomodoroSessionId);
+    if (!result.success) {
+      toast.error(result.message || "Failed to resume session");
+    }
+  };
+
+  const handleCompletePomodoroSession = async () => {
+    if (!pomodoroSessionId) return;
+
+    const result = await completePomodoroSessionAPI(
+      pomodoroSessionId,
+      workMinutes,
+    );
+    if (result.success) {
+      toast.success("Session saved to your profile!");
+    } else {
+      toast.error(result.message || "Failed to save session");
+      console.error("Error completing pomodoro:", result.error);
+    }
+  };
 
   const reset = () => {
     setIsRunning(false);
@@ -142,7 +216,7 @@ function PomodoroTimer({ subjectName, priority, planTitle }) {
     setSeconds(workMinutes * 60);
   };
 
-  const handleStart = () => {
+  const handleStart = async () => {
     const w = Math.min(Math.max(1, workMinutes), MAX_WORK_MINUTES);
     const b = Math.max(1, breakMinutes);
 
@@ -150,6 +224,10 @@ function PomodoroTimer({ subjectName, priority, planTitle }) {
     setBreakMinutes(b);
     setSeconds(w * 60);
     setStarted(true);
+
+    // Call API to start pomodoro session
+    await handleStartPomodoro();
+
     setIsRunning(true);
   };
 
@@ -302,8 +380,16 @@ function PomodoroTimer({ subjectName, priority, planTitle }) {
         </button>
 
         <button
-          onClick={() => setIsRunning(!isRunning)}
-          className="h-16 w-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-soft-lg hover:scale-[1.05] transition-transform"
+          onClick={async () => {
+            if (isRunning) {
+              await handlePausePomodoro();
+            } else if (pomodoroSessionId) {
+              await handleResumePomodoro();
+            }
+            setIsRunning(!isRunning);
+          }}
+          disabled={isLoading}
+          className="h-16 w-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-soft-lg hover:scale-[1.05] transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isRunning ? (
             <Pause className="h-6 w-6" />

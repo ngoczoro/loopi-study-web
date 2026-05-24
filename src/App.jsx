@@ -78,7 +78,6 @@ function App() {
           </div>
 
           <div className="p-4 md:p-8">
-            <Layout>
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/dashboard" element={<Dashboard />} />
@@ -93,7 +92,6 @@ function App() {
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
-            </Layout>
           </div>
         </main>
       </div>
