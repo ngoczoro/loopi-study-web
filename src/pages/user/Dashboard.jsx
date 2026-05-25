@@ -8,6 +8,8 @@ import loopyHappy from "../../assets/loopy-happy.png";
 import { Link } from "react-router-dom";
 import { useAppStore } from "../../lib/store";
 import { useAuthStore } from "../../lib/authStore";
+import { useFocusAnalyticsSummary } from "@/hooks/useFocusAnalytics";
+import { formatFocusHours } from "@/services/focusAnalyticsService";
 import {
   formatDueDate,
   getTodayCompletedCount,
@@ -24,7 +26,6 @@ export default function Dashboard() {
   const accessToken = useAuthStore((s) => s.accessToken);
 
   const tasks = useAppStore((s) => s.tasks);
-  const sessions = useAppStore((s) => s.sessions);
   const subjects = useAppStore((s) => s.subjects);
   const taskSummary = useAppStore((s) => s.taskSummary);
   const taskSummaryLoading = useAppStore((s) => s.taskSummaryLoading);
@@ -40,7 +41,12 @@ export default function Dashboard() {
   );
   const completed = getTodayCompletedCount(tasks, today);
   const pendingToday = todayTasks.length - completed;
-  const totalHours = sessions?.reduce((sum, s) => sum + s.duration, 0) || 0;
+
+  const { data: focusSummary, isLoading: focusSummaryLoading } =
+    useFocusAnalyticsSummary();
+  const todayFocusLabel = focusSummaryLoading
+    ? "…"
+    : `${formatFocusHours(focusSummary?.todayFocusSeconds)} hrs`;
 
   useEffect(() => {
     if (!accessToken) return;
@@ -112,7 +118,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { icon: Flame, label: "Streak", value: "7 days", color: "text-orange-500" },
-          { icon: Clock, label: "Today", value: `${totalHours.toFixed(1)} hrs`, color: "text-blue-500" },
+          { icon: Clock, label: "Today", value: todayFocusLabel, color: "text-blue-500" },
           {
             icon: CheckCircle2,
             label: "Completed",

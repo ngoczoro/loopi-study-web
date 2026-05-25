@@ -1,10 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./hooks/useAuth";
 
-// Auth Pages
 import Login from "./pages/auth/Login";
-
-// User Pages
 import Progress from "./pages/user/Progress";
 import Notes from "./pages/user/Notes";
 import Quiz from "./pages/user/Quiz";
@@ -15,29 +12,28 @@ import Planner from "./pages/user/Planner";
 import Settings from "./pages/user/Settings";
 import Notifications from "./pages/user/Notifications";
 import Goals from "./pages/user/Goals";
-
-// Admin Pages
 import AdminLayout from "./components/AdminLayout";
 import AdminContent from "./pages/admin/AdminContent";
 import AdminWarnings from "./pages/admin/AdminWarnings";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminUsers from "./pages/admin/AdminUsers";
-
-// Other
 import NotFound from "./pages/NotFound";
 import { AppSidebar } from "./components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "./components/sidebar";
 import { FilePreviewModal } from "./components/FilePreviewModal";
+import AuthLoadingScreen from "./components/AuthLoadingScreen";
+import AppBootstrap from "./components/AppBootstrap";
+import { FocusSessionProvider } from "./contexts/FocusSessionContext";
 
 import "./App.css";
 
 function App() {
-  const { user, isAuthenticated } = useAuth();
-  console.log("USER:", user);
-  console.log("ROLE:", user?.role);
-  console.log("AUTH:", isAuthenticated);
+  const { authReady, isAuthenticated, user } = useAuth();
 
-  // If not authenticated, show auth pages only
+  if (!authReady) {
+    return <AuthLoadingScreen />;
+  }
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-background">
@@ -51,9 +47,9 @@ function App() {
     );
   }
 
-  // If admin, show admin layout
   if (user?.role === "admin") {
     return (
+      <AppBootstrap>
       <AdminLayout>
         <Routes>
           <Route path="/admin" element={<AdminDashboard />} />
@@ -63,11 +59,13 @@ function App() {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </AdminLayout>
+      </AppBootstrap>
     );
   }
 
-  // User layout
   return (
+    <AppBootstrap>
+    <FocusSessionProvider>
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background">
         <AppSidebar />
@@ -98,6 +96,8 @@ function App() {
       </div>
       <FilePreviewModal />
     </SidebarProvider>
+    </FocusSessionProvider>
+    </AppBootstrap>
   );
 }
 

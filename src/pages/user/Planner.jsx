@@ -1,4 +1,5 @@
-import { useState, useRef, useMemo, useEffect, useCallback } from "react";
+import { useState, useRef, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
   ChevronRight,
@@ -17,16 +18,17 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import loopyThinking from "@/assets/loopy-thinking.png";
-import { useAppStore } from "@/lib/store";
+import { useSubjects } from "@/hooks/useSubjects";
+import { usePlannerWeek, usePlannerWeekCache } from "@/hooks/usePlannerWeek";
+import { useBlockedSlotsQuery } from "@/hooks/queries/user";
 import { getWeekStartDate } from "@/lib/plannerWeek";
+import { invalidatePlannerWeek } from "@/lib/query/invalidate";
 import { generateMockStudyPlan } from "@/lib/ai-utils";
 import {
   createPlannerSession,
   deletePlannerSession,
-  getPlannerSessions,
   updatePlannerSession,
 } from "@/services/plannerService";
-import { getBlockedSlots } from "@/services/userService";
 import { toast } from "sonner";
 
 const hours = Array.from({ length: 12 }, (_, i) => i + 8);
@@ -66,12 +68,9 @@ function parseICS(text) {
 }
 
 export default function Planner() {
-  const { subjects, fetchSubjects, replaceSessions } = useAppStore();
+  const { subjects } = useSubjects();
   const navigate = useNavigate();
-
-  const [sessions, setSessions] = useState([]);
-  const [blockedSlots, setBlockedSlots] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const weekStartDate = useMemo(
@@ -91,36 +90,26 @@ export default function Planner() {
     });
   }, [currentDate]);
 
-  const loadWeek = useCallback(async () => {
-    setLoading(true);
-    const week = getWeekStartDate(currentDate);
+  const {
+    sessions,
+    loading: sessionsLoading,
+    refetch: refetchSessions,
+  } = usePlannerWeek(weekStartDate);
+  const {
+    blockedSlots,
+    isLoading: blockedLoading,
+    error: blockedError,
+  } = useBlockedSlotsQuery();
+  const { setSessions } = usePlannerWeekCache(weekStartDate);
 
-    const [sessionsRes, blockedRes] = await Promise.all([
-      getPlannerSessions(week),
-      getBlockedSlots(),
-    ]);
+  const loading = sessionsLoading || blockedLoading;
 
-    if (sessionsRes.success) {
-      setSessions(sessionsRes.data);
-      replaceSessions(sessionsRes.data);
-    } else {
-      toast.error(sessionsRes.message);
+  const reloadWeek = () => {
+    refetchSessions();
+    if (blockedError) {
+      queryClient.invalidateQueries({ queryKey: ["user", "blocked-slots"] });
     }
-
-    if (blockedRes.success) {
-      setBlockedSlots(blockedRes.data || []);
-    }
-
-    setLoading(false);
-  }, [currentDate, replaceSessions]);
-
-  useEffect(() => {
-    fetchSubjects();
-  }, [fetchSubjects]);
-
-  useEffect(() => {
-    loadWeek();
-  }, [loadWeek]);
+  };
 
   const weekLabel = currentDate.toLocaleDateString("en-US", {
     month: "long",
@@ -221,12 +210,11 @@ export default function Planner() {
     if (result.success) {
       setSessions((prev) => {
         const next = prev.map((s) => (s.id === id ? result.data : s));
-        replaceSessions(next);
         return next;
       });
     } else {
       toast.error(result.message);
-      loadWeek();
+      reloadWeek();
     }
 
     dragIdRef.current = null;
@@ -264,16 +252,12 @@ export default function Planner() {
       );
 
       if (result.success) {
-        setSessions((prev) => {
-          const next = prev.map((s) =>
-            s.id === sessionId ? result.data : s,
-          );
-          replaceSessions(next);
-          return next;
-        });
+        setSessions((prev) =>
+          prev.map((s) => (s.id === sessionId ? result.data : s)),
+        );
       } else {
         toast.error(result.message);
-        loadWeek();
+        reloadWeek();
       }
     };
 
@@ -335,9 +319,7 @@ export default function Planner() {
     );
 
     if (result.success) {
-      const next = [...sessions, result.data];
-      setSessions(next);
-      replaceSessions(next);
+      setSessions((prev) => [...prev, result.data]);
       setShowAdd(false);
       setAddForm({ title: "", subjectId: "", day: "0", start: "9", duration: "1" });
       toast.success("Study session added!");
@@ -379,11 +361,9 @@ export default function Planner() {
     );
 
     if (result.success) {
-      const next = sessions.map((s) =>
-        s.id === editingSession.id ? result.data : s,
+      setSessions((prev) =>
+        prev.map((s) => (s.id === editingSession.id ? result.data : s)),
       );
-      setSessions(next);
-      replaceSessions(next);
       setEditingSession(null);
       toast.success("Session updated!");
     } else {
@@ -394,9 +374,7 @@ export default function Planner() {
   const handleDeleteSession = async (id) => {
     const result = await deletePlannerSession(id);
     if (result.success) {
-      const next = sessions.filter((s) => s.id !== id);
-      setSessions(next);
-      replaceSessions(next);
+      setSessions((prev) => prev.filter((s) => s.id !== id));
       toast.success("Session removed");
     } else {
       toast.error(result.message);
@@ -407,34 +385,91 @@ export default function Planner() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
+    reader.onerror = () => {
+      toast.error("Could not read the .ics file");
+    };
     reader.onload = async (ev) => {
-      const text = ev.target?.result;
-      const events = parseICS(text);
-      if (events.length === 0) {
-        toast.error("No events found in file");
-        return;
-      }
-
-      let created = 0;
-      for (const evn of events) {
-        const result = await createPlannerSession(
-          {
-            ...evn,
-            color: "280 60% 65%",
-            source: "ics_import",
-          },
-          weekStartDate,
-        );
-        if (result.success) {
-          created += 1;
+      try {
+        const text = ev.target?.result;
+        if (typeof text !== "string") {
+          toast.error("Could not read the .ics file");
+          return;
         }
-      }
 
-      if (created > 0) {
-        toast.success(`Schedule imported! ${created} event(s) added 🎉`);
-        loadWeek();
-      } else {
-        toast.error("Could not import events");
+        const events = parseICS(text);
+        if (events.length === 0) {
+          toast.error("No events found in file");
+          return;
+        }
+
+        let created = 0;
+        const failures = [];
+
+        for (const evn of events) {
+          const result = await createPlannerSession(
+            {
+              ...evn,
+              color: "280 60% 65%",
+              source: "ics_import",
+            },
+            weekStartDate,
+          );
+          if (result.success) {
+            created += 1;
+          } else {
+            const apiMessage = result.message || "Failed to create planner session";
+            const apiDetail = result.error?.errors ?? result.error?.message;
+            failures.push({
+              title: evn.title,
+              message:
+                apiDetail && apiMessage !== apiDetail
+                  ? `${apiMessage}: ${apiDetail}`
+                  : apiMessage,
+            });
+          }
+        }
+
+        const failed = failures.length;
+        const total = events.length;
+        const failureSummary = (() => {
+          const byMessage = new Map();
+          for (const { title, message } of failures) {
+            if (!byMessage.has(message)) {
+              byMessage.set(message, []);
+            }
+            byMessage.get(message).push(title);
+          }
+          return [...byMessage.entries()]
+            .slice(0, 5)
+            .map(([message, titles]) => {
+              const count = titles.length;
+              if (count === 1) {
+                return `${titles[0]}: ${message}`;
+              }
+              return `${count} events: ${message}`;
+            })
+            .join("\n");
+        })();
+
+        if (created > 0) {
+          toast.success(
+            failed > 0
+              ? `Imported ${created} of ${total} event(s)`
+              : `Schedule imported! ${created} event(s) added 🎉`,
+          );
+          reloadWeek();
+        }
+
+        if (failed > 0) {
+          toast.error(
+            created > 0
+              ? `${failed} event(s) could not be imported`
+              : `Could not import events (0 of ${total})`,
+            { description: failureSummary, duration: 8000 },
+          );
+        }
+      } catch {
+        toast.error("Could not parse the .ics file");
       }
     };
     reader.readAsText(file);
@@ -479,7 +514,7 @@ export default function Planner() {
       toast.success(`Study plan saved! ${created} sessions added 📅`);
       setAiPlan(null);
       setShowAiPlan(false);
-      loadWeek();
+      reloadWeek();
     } else {
       toast.error("Could not save AI plan sessions");
     }

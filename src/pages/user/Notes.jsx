@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   FileText,
   Upload,
@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAppStore } from "@/lib/store";
+import { useAdminDemoStore } from "@/lib/adminDemoStore";
+import { useSubjects } from "@/hooks/useSubjects";
 import { toast } from "sonner";
 import {
   generateMockSummary,
@@ -23,15 +25,11 @@ import {
   suggestMaterials,
 } from "@/lib/ai-utils";
 import {
-  isValidUrl,
-  normalizeSubjectId,
-  validateUploadFile,
-  handleUploadFileSelection,
-  FILE_INPUT_ACCEPT,
-  SUPPORTED_FILES_LABEL,
-} from "@/lib/content-utils";
-import { FilePreviewActions } from "@/components/FilePreviewActions";
-import { useAuthStore } from "@/lib/authStore";
+  getNotesAPI,
+  createNoteAPI,
+  updateNoteAPI,
+  deleteNoteAPI,
+} from "@/services/noteService";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,21 +46,18 @@ import {
 const typeIcons = { note: FileText, file: Upload, link: Link2 };
 
 export default function Notes() {
-  const content = useAppStore((state) => state.content);
-  const subjects = useAppStore((state) => state.subjects);
-  const contentLoading = useAppStore((state) => state.contentLoading);
-  const contentUploading = useAppStore((state) => state.contentUploading);
-  const fetchContent = useAppStore((state) => state.fetchContent);
-  const fetchSubjects = useAppStore((state) => state.fetchSubjects);
-  const createContentNote = useAppStore((state) => state.createContentNote);
-  const createContentLink = useAppStore((state) => state.createContentLink);
-  const uploadContentFile = useAppStore((state) => state.uploadContentFile);
-  const updateContentItem = useAppStore((state) => state.updateContentItem);
-  const deleteContentItem = useAppStore((state) => state.deleteContentItem);
-  const addQuiz = useAppStore((state) => state.addQuiz);
+  const {
+    documents,
+    subjects,
+    addDocument,
+    deleteDocument,
+    updateDocument,
+    addQuiz,
+    addViolation,
+  } = useAppStore();
 
-  const accessToken = useAuthStore((s) => s.accessToken);
-
+  const [notes, setNotes] = useState([]);
+  const [isLoadingNotes, setIsLoadingNotes] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
 
@@ -94,13 +89,26 @@ export default function Notes() {
   const [suggestions, setSuggestions] = useState([]);
   const [suggestSubjectId, setSuggestSubjectId] = useState("");
 
+  // Load notes on component mount
   useEffect(() => {
-    if (!accessToken) return;
-    fetchContent();
-    fetchSubjects();
-  }, [accessToken, fetchContent, fetchSubjects]);
+    loadNotes();
+  }, []);
 
-  const displayedNotes = content;
+  const loadNotes = async () => {
+    setIsLoadingNotes(true);
+    const result = await getNotesAPI();
+
+    if (result.success) {
+      setNotes(result.data);
+    } else {
+      toast.error(result.message || "Failed to load notes");
+      console.error("Error loading notes:", result.error);
+    }
+    setIsLoadingNotes(false);
+  };
+
+  // Use notes from API if available, fallback to documents from store
+  const displayedNotes = notes.length > 0 ? notes : documents;
   const filtered = displayedNotes.filter((d) =>
     d.title.toLowerCase().includes(search.toLowerCase()),
   );
@@ -116,89 +124,93 @@ export default function Notes() {
       return;
     }
 
-    const subjectId = normalizeSubjectId(form.subjectId);
-    setIsSubmitting(true);
-    let result;
+    const content =
+      activeTab === "note"
+        ? form.content
+        : activeTab === "link"
+          ? form.url
+          : undefined;
 
-    // TEMP DISABLED:
-    // AI moderation for Content module is postponed until Phase 5.
+    const modResult = moderateContent(form.title + " " + (content || ""));
 
-    if (activeTab === "note") {
-      if (!form.content.trim()) {
-        toast.error("Note content is required");
-        setIsSubmitting(false);
-        return;
-      }
-      result = await createContentNote({
-        title: form.title.trim(),
-        content: form.content.trim(),
-        subjectId,
+    if (modResult?.flagged) {
+      addViolation({
+        userId: "u1",
+        userName: "Student",
+        userEmail: "student@example.com",
+        type: modResult.type,
+        contentId: "",
+        contentTitle: form.title,
+        contentType: activeTab,
+        detectedAt: new Date().toLocaleString(),
+        resolved: false,
       });
-    } else if (activeTab === "link") {
-      if (!isValidUrl(form.url)) {
-        toast.error("Please enter a valid URL (https://...)");
-        setIsSubmitting(false);
-        return;
-      }
-      result = await createContentLink({
-        title: form.title.trim(),
-        content: form.url.trim(),
-        subjectId,
-      });
-    } else {
-      const fileCheck = validateUploadFile(selectedFile);
-      if (!fileCheck.ok) {
-        toast.error(fileCheck.message);
-        setSelectedFile(null);
-        setIsSubmitting(false);
-        return;
-      }
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      formData.append("title", form.title.trim());
-      if (subjectId) {
-        formData.append("subjectId", subjectId);
-      }
-      result = await uploadContentFile(formData);
-    }
 
-    setIsSubmitting(false);
-
-    if (!result.ok) {
-      toast.error(result.message || "Failed to save content");
+      toast.error("Content flagged by AI moderation.");
       return;
     }
 
-    await fetchContent();
-
-    setShowAdd(false);
-    setForm({ title: "", subjectId: "", content: "", url: "" });
-    setSelectedFile(null);
-    toast.success(
-      activeTab === "file"
-        ? "File uploaded successfully"
-        : activeTab === "note"
-          ? "Note created successfully"
-          : "Link added successfully",
+    setIsSubmitting(true);
+    const result = await createNoteAPI(
+      form.title,
+      content,
+      form.subjectId || null,
     );
+
+    if (result.success) {
+      // Add to local state
+      setNotes([...notes, result.data]);
+
+      // Also add to store for backward compatibility
+      addDocument({
+        title: form.title,
+        type: activeTab,
+        subjectId: form.subjectId || null,
+        date: new Date().toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        }),
+        content,
+        ownerId: "u1",
+        ownerName: "Student",
+        createdAt: new Date().toLocaleString("en-US", {
+          month: "short",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      });
+
+      setShowAdd(false);
+      setForm({ title: "", subjectId: "", content: "", url: "" });
+      toast.success("Note created successfully");
+    } else {
+      toast.error(result.message || "Failed to create note");
+      console.error("Error creating note:", result.error);
+    }
+    setIsSubmitting(false);
   };
 
   const handleDelete = async () => {
-    if (!deleteId) return;
+    if (deleteId) {
+      setIsSubmitting(true);
+      const result = await deleteNoteAPI(deleteId);
 
-    setIsSubmitting(true);
-    const result = await deleteContentItem(deleteId);
-    setIsSubmitting(false);
+      if (result.success) {
+        // Remove from local state
+        setNotes(notes.filter((n) => n.id !== deleteId));
 
-    if (!result.ok) {
-      toast.error(result.message || "Failed to delete content");
-      return;
+        // Also remove from store for backward compatibility
+        deleteDocument(deleteId);
+
+        toast.success("Note deleted successfully");
+      } else {
+        toast.error(result.message || "Failed to delete note");
+        console.error("Error deleting note:", result.error);
+      }
+      setIsSubmitting(false);
+      setDeleteId(null);
     }
-
-    await fetchContent();
-
-    toast.success("Content deleted successfully");
-    setDeleteId(null);
   };
 
   const openEdit = (doc) => {
@@ -214,31 +226,32 @@ export default function Notes() {
   const handleEdit = async () => {
     if (!editDoc || !editForm.title.trim()) return;
 
-    if (editDoc.type === "link" && !isValidUrl(editForm.content)) {
-      toast.error("Please enter a valid URL");
-      return;
-    }
-
-    if (editDoc.type === "note" && !editForm.content.trim()) {
-      toast.error("Note content is required");
-      return;
-    }
-
-    const payload = {
-      title: editForm.title.trim(),
-      subjectId: normalizeSubjectId(editForm.subjectId),
-    };
-
-    if (editDoc.type === "note" || editDoc.type === "link") {
-      payload.content = editForm.content.trim();
-    }
-
-    if (editDoc.type === "file" && editForm.fileName.trim()) {
-      payload.fileName = editForm.fileName.trim();
-    }
-
     setIsSubmitting(true);
-    const result = await updateContentItem(editDoc.id, payload);
+    const result = await updateNoteAPI(editDoc.id, {
+      title: editForm.title,
+      content: editForm.content,
+      subjectId: editForm.subjectId || null,
+    });
+
+    if (result.success) {
+      // Update local state
+      setNotes(
+        notes.map((n) => (n.id === editDoc.id ? { ...n, ...editForm } : n)),
+      );
+
+      // Also update store for backward compatibility
+      updateDocument(editDoc.id, {
+        title: editForm.title,
+        content: editForm.content,
+        subjectId: editForm.subjectId || null,
+      });
+
+      setEditDoc(null);
+      toast.success("Note updated successfully");
+    } else {
+      toast.error(result.message || "Failed to update note");
+      console.error("Error updating note:", result.error);
+    }
     setIsSubmitting(false);
 
     if (!result.ok) {
@@ -258,13 +271,16 @@ export default function Notes() {
     setTimeout(async () => {
       const summary = generateMockSummary(doc.title, doc.content);
 
-      await createContentNote({
+      addDocument({
         title: `Summary: ${doc.title}`,
-        content: summary,
+        type: "note",
         subjectId: doc.subjectId,
+        date: new Date().toLocaleDateString(),
+        content: summary,
+        ownerId: "u1",
+        ownerName: "Student",
+        createdAt: new Date().toLocaleString(),
       });
-
-      await fetchContent();
 
       setAiLoading(null);
       setViewDoc(null);
@@ -304,30 +320,17 @@ export default function Notes() {
     }, 800);
   };
 
-  const handleAddSuggestion = async (sug) => {
-    const subjectId = normalizeSubjectId(suggestSubjectId);
-    let result;
-    if (sug.type === "link") {
-      result = await createContentLink({
-        title: sug.title,
-        content: sug.content,
-        subjectId,
-      });
-    } else {
-      result = await createContentNote({
-        title: sug.title,
-        content: sug.content,
-        subjectId,
-      });
-    }
-
-    if (!result?.ok) {
-      toast.error(result?.message || "Failed to add material");
-      return;
-    }
-
-    await fetchContent();
-    toast.success("Material added");
+  const handleAddSuggestion = (sug) => {
+    addDocument({
+      title: sug.title,
+      type: sug.type,
+      subjectId: suggestSubjectId || null,
+      date: new Date().toLocaleDateString(),
+      content: sug.content,
+      ownerId: "u1",
+      ownerName: "Student",
+      createdAt: new Date().toLocaleString(),
+    });
   };
 
   const tabs = [

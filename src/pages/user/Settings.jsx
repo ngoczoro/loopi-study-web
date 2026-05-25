@@ -4,13 +4,15 @@ import loopyHappy from "@/assets/loopy-happy.png";
 import { useAuthStore } from "@/lib/authStore";
 import {
   changePassword as changePasswordAPI,
-  getBlockedSlots,
   getMe,
   getPreferences,
-  replaceBlockedSlots,
   updateMe,
   updatePreferences,
 } from "@/services/userService";
+import {
+  useBlockedSlotsQuery,
+  useBlockedSlotsMutation,
+} from "@/hooks/queries/user";
 import { toast } from "sonner";
 
 const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -22,7 +24,12 @@ export default function Settings() {
 
   const [blockMode, setBlockMode] = useState("block");
   const [loading, setLoading] = useState(true);
-  const [blockedSlots, setBlockedSlots] = useState([]);
+  const {
+    blockedSlots,
+    isLoading: blockedSlotsLoading,
+    refetch: refetchBlockedSlots,
+  } = useBlockedSlotsQuery();
+  const replaceBlockedSlotsMutation = useBlockedSlotsMutation();
 
   const [displayName, setDisplayName] = useState(user?.fullName || "");
   const [email, setEmail] = useState(user?.email || "");
@@ -40,10 +47,9 @@ export default function Settings() {
   const loadSettings = useCallback(async () => {
     setLoading(true);
     try {
-      const [profileRes, prefsRes, slotsRes] = await Promise.all([
+      const [profileRes, prefsRes] = await Promise.all([
         getMe(),
         getPreferences(),
-        getBlockedSlots(),
       ]);
 
       if (profileRes.success) {
@@ -66,11 +72,6 @@ export default function Settings() {
         toast.error(prefsRes.message);
       }
 
-      if (slotsRes.success) {
-        setBlockedSlots(slotsRes.data || []);
-      } else {
-        toast.error(slotsRes.message);
-      }
     } finally {
       setLoading(false);
     }
@@ -84,20 +85,14 @@ export default function Settings() {
     blockedSlots.some((s) => s.day === day && s.hour === hour);
 
   const persistBlockedSlots = async (nextSlots) => {
-    setBlockedSlots(nextSlots);
-    const result = await replaceBlockedSlots(nextSlots);
-
-    if (!result.success) {
-      toast.error(result.message);
-      const reload = await getBlockedSlots();
-      if (reload.success) {
-        setBlockedSlots(reload.data || []);
-      }
+    try {
+      await replaceBlockedSlotsMutation.mutateAsync(nextSlots);
+      return true;
+    } catch (e) {
+      toast.error(e.message || "Failed to update blocked slots");
+      refetchBlockedSlots();
       return false;
     }
-
-    setBlockedSlots(result.data || []);
-    return true;
   };
 
   const handleSlotClick = async (day, hour) => {
@@ -190,7 +185,7 @@ export default function Settings() {
     }
   };
 
-  if (loading) {
+  if (loading || blockedSlotsLoading) {
     return (
       <div className="max-w-4xl mx-auto p-8 text-center text-muted-foreground">
         Loading settings…

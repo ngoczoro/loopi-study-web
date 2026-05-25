@@ -2,14 +2,15 @@ import { useState, useRef, useEffect } from "react";
 import { Bell, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { useAppStore } from "@/lib/store";
+import { useAdminDemoStore } from "@/lib/adminDemoStore";
 
 export function AdminNotificationDropdown() {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const navigate = useNavigate();
 
-  const { adminNotifications = [], markAdminNotificationRead } = useAppStore();
+  const { adminNotifications = [], markAdminNotificationRead } =
+    useAdminDemoStore();
   const unreadCount = adminNotifications.filter((n) => n.unread).length;
 
   useEffect(() => {

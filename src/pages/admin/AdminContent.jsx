@@ -1,4 +1,6 @@
-import { useAppStore } from "@/lib/store";
+import { useAdminDemoStore } from "@/lib/adminDemoStore";
+import { useSubjects } from "@/hooks/useSubjects";
+import { useSubjectMutations } from "@/hooks/queries/subjects";
 import { motion } from "framer-motion";
 import { Trash2, FileText, BookOpen, Link2 } from "lucide-react";
 import { toast } from "sonner";
@@ -29,16 +31,22 @@ const typeIcon = {
 };
 
 export default function AdminContent() {
-  const { subjects, documents, deleteDocument, deleteSubject } = useAppStore();
+  const { deleteSubject } = useSubjectMutations();
+  const { documents, deleteDocument } = useAdminDemoStore();
+  const { subjects } = useSubjects();
 
   const handleDeleteDoc = (id) => {
     deleteDocument(id);
     toast.success("Document deleted");
   };
 
-  const handleDeleteSubject = (id) => {
-    deleteSubject(id);
-    toast.success("Subject deleted");
+  const handleDeleteSubject = async (id) => {
+    const result = await deleteSubject(id);
+    if (result.ok) {
+      toast.success("Subject deleted");
+    } else {
+      toast.error(result.message || "Failed to delete subject");
+    }
   };
 
   return (

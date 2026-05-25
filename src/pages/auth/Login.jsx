@@ -18,6 +18,9 @@ export default function Login() {
     verifyResetOTP,
     isLoading,
     email: storedEmail,
+    authReady,
+    isAuthenticated,
+    user,
   } = useAuth();
 
   const [view, setView] = useState("login");
@@ -35,16 +38,12 @@ export default function Login() {
 
   const otpRefs = useRef([]);
 
-  // Auto redirect if already logged in
   useEffect(() => {
-    const authData = JSON.parse(localStorage.getItem("auth-store") || "{}");
-
-    const user = authData?.state?.user;
-
-    if (user) {
-      navigate(user.role === "admin" ? "/admin" : "/");
+    if (!authReady || !isAuthenticated || !user) {
+      return;
     }
-  }, [navigate]);
+    navigate(user.role === "admin" ? "/admin" : "/");
+  }, [authReady, isAuthenticated, user, navigate]);
 
   // Timer countdown for resend
   useEffect(() => {

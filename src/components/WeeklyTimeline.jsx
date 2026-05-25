@@ -1,22 +1,42 @@
-import { useAppStore } from "@/lib/store";
 import { useMemo } from "react";
+import { Loader2 } from "lucide-react";
+import { getWeekStartDate } from "@/lib/plannerWeek";
+import { usePlannerWeek } from "@/hooks/usePlannerWeek";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const HOURS = Array.from({ length: 25 }, (_, i) => i); // 0-24
+const HOURS = Array.from({ length: 25 }, (_, i) => i);
 
 export default function WeeklyTimeline() {
-  const sessions = useAppStore((s) => s.sessions);
+  const weekStartDate = getWeekStartDate(new Date());
+  const { sessions, loading, error } = usePlannerWeek(weekStartDate);
 
   const totalHours = useMemo(
     () => sessions.reduce((sum, s) => sum + s.duration, 0),
     [sessions],
   );
 
+  if (loading) {
+    return (
+      <div className="bg-card rounded-2xl p-8 shadow-soft flex items-center justify-center gap-2 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        Loading this week&apos;s schedule…
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-card rounded-2xl p-5 shadow-soft text-sm text-muted-foreground">
+        Could not load planner sessions. Open the Planner to retry.
+      </div>
+    );
+  }
+
   return (
     <div className="bg-card rounded-2xl p-5 shadow-soft">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-display font-semibold text-foreground">
-          This Week's Study Time
+          This Week&apos;s Study Time
         </h2>
         <span className="text-sm font-semibold text-primary">
           {totalHours.toFixed(1)}h total
@@ -25,7 +45,6 @@ export default function WeeklyTimeline() {
 
       <div className="overflow-x-auto">
         <div className="min-w-[600px]">
-          {/* Hour ticks */}
           <div className="flex items-center gap-2 mb-1">
             <span className="w-10 shrink-0" />
             <div className="flex-1 relative h-5">
@@ -54,11 +73,9 @@ export default function WeeklyTimeline() {
             <span className="w-10 shrink-0" />
           </div>
 
-          {/* Days */}
           <div className="space-y-1.5">
             {DAYS.map((day, dayIndex) => {
               const daySessions = sessions.filter((s) => s.day === dayIndex);
-
               const dayTotal = daySessions.reduce(
                 (sum, s) => sum + s.duration,
                 0,
@@ -71,7 +88,6 @@ export default function WeeklyTimeline() {
                   </span>
 
                   <div className="flex-1 relative h-9 bg-secondary/40 rounded-lg overflow-hidden">
-                    {/* Grid */}
                     {HOURS.filter((h) => h % 4 === 0 && h > 0 && h < 24).map(
                       (h) => (
                         <div
@@ -82,7 +98,6 @@ export default function WeeklyTimeline() {
                       ),
                     )}
 
-                    {/* Sessions */}
                     {daySessions.map((session) => {
                       const leftPct = (session.start / 24) * 100;
                       const widthPct = (session.duration / 24) * 100;
@@ -117,7 +132,6 @@ export default function WeeklyTimeline() {
                       );
                     })}
 
-                    {/* Empty */}
                     {daySessions.length === 0 && (
                       <div className="absolute inset-0 flex items-center justify-center">
                         <span className="text-[10px] text-muted-foreground/50 italic">
@@ -138,15 +152,21 @@ export default function WeeklyTimeline() {
       </div>
 
       <p className="text-sm text-muted-foreground mt-4">
-        You've scheduled{" "}
-        <span className="font-semibold text-foreground">
-          {totalHours.toFixed(1)} hours
-        </span>{" "}
-        across{" "}
-        <span className="font-semibold text-foreground">
-          {sessions.length} sessions
-        </span>{" "}
-        this week. Keep it up!
+        {sessions.length === 0 ? (
+          <>No sessions scheduled this week yet. Add some in the Planner.</>
+        ) : (
+          <>
+            You&apos;ve scheduled{" "}
+            <span className="font-semibold text-foreground">
+              {totalHours.toFixed(1)} hours
+            </span>{" "}
+            across{" "}
+            <span className="font-semibold text-foreground">
+              {sessions.length} sessions
+            </span>{" "}
+            this week.
+          </>
+        )}
       </p>
     </div>
   );

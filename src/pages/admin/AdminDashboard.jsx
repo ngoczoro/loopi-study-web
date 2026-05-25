@@ -1,6 +1,7 @@
 "use client"
 
-import { useAppStore } from "@/lib/store";
+import { useAdminDemoStore } from "@/lib/adminDemoStore";
+import { useSubjects } from "@/hooks/useSubjects";
 import { motion } from "framer-motion";
 import { Users, BookOpen, CalendarDays, TrendingUp } from "lucide-react";
 import {
@@ -16,21 +17,10 @@ const chartConfig = {
 };
 
 export default function AdminDashboard() {
-  const { users, subjects, sessions, documents } = useAppStore();
+  const { users, documents } = useAdminDemoStore();
+  const { subjects } = useSubjects();
   const students = users.filter((u) => u.role === "student");
   const activeStudents = students.filter((u) => !u.locked);
-
-  const stats = [
-    { label: "Total Students", value: students.length, icon: Users, color: "bg-primary/10 text-primary" },
-    { label: "Total Subjects", value: subjects.length, icon: BookOpen, color: "bg-accent/10 text-accent-foreground" },
-    { label: "Study Sessions", value: sessions.length, icon: CalendarDays, color: "bg-secondary text-secondary-foreground" },
-    {
-      label: "Active Rate",
-      value: students.length > 0 ? `${Math.round((activeStudents.length / students.length) * 100)}%` : "0%",
-      icon: TrendingUp,
-      color: "bg-accent/10 text-accent-foreground",
-    },
-  ];
 
   const weeklyData = [
     { day: "Mon", sessions: 4, students: 3 },
@@ -40,6 +30,23 @@ export default function AdminDashboard() {
     { day: "Fri", sessions: 5, students: 6 },
     { day: "Sat", sessions: 2, students: 1 },
     { day: "Sun", sessions: 1, students: 1 },
+  ];
+
+  const stats = [
+    { label: "Total Students", value: students.length, icon: Users, color: "bg-primary/10 text-primary" },
+    { label: "Total Subjects", value: subjects.length, icon: BookOpen, color: "bg-accent/10 text-accent-foreground" },
+    {
+      label: "Study Sessions",
+      value: weeklyData.reduce((sum, d) => sum + d.sessions, 0),
+      icon: CalendarDays,
+      color: "bg-secondary text-secondary-foreground",
+    },
+    {
+      label: "Active Rate",
+      value: students.length > 0 ? `${Math.round((activeStudents.length / students.length) * 100)}%` : "0%",
+      icon: TrendingUp,
+      color: "bg-accent/10 text-accent-foreground",
+    },
   ];
 
   const pieData = [

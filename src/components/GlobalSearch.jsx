@@ -4,14 +4,11 @@ import {
   Search,
   X,
   BookOpen,
-  FileText,
   StickyNote,
-  CalendarDays,
   Brain,
   Loader2,
 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
-import { useAuthStore } from "@/lib/authStore";
 import { cn } from "@/lib/utils";
 
 const categoryMap = {
@@ -77,16 +74,9 @@ export function GlobalSearch() {
   const location = useLocation();
 
   const subjects = useAppStore((s) => s.subjects || []);
-  const documents = useAppStore((s) => s.content || s.documents || []);
-  const fetchContent = useAppStore((s) => s.fetchContent);
-  const accessToken = useAuthStore((s) => s.accessToken);
+  const documents = useAppStore((s) => s.documents || []);
   const quizzes = useAppStore((s) => s.quizzes || []);
   const sessions = useAppStore((s) => s.sessions || []);
-
-  useEffect(() => {
-    if (!accessToken) return;
-    fetchContent();
-  }, [accessToken, fetchContent]);
 
   const activeFilter = categoryMap[location.pathname] || "all";
 
@@ -115,18 +105,6 @@ export function GlobalSearch() {
         }
       });
 
-      documents.forEach((d) => {
-        if (d.title.toLowerCase().includes(lower)) {
-          out.push({
-            id: d.id,
-            title: d.title,
-            category: "documents",
-            icon: FileText,
-            route: "/subjects",
-          });
-        }
-      });
-
       quizzes.forEach((qz) => {
         if (qz.title.toLowerCase().includes(lower)) {
           out.push({
@@ -139,23 +117,11 @@ export function GlobalSearch() {
         }
       });
 
-      sessions.forEach((s) => {
-        if (s.title.toLowerCase().includes(lower)) {
-          out.push({
-            id: s.id,
-            title: s.title,
-            category: "tasks",
-            icon: CalendarDays,
-            route: "/planner",
-          });
-        }
-      });
-
       setResults(out);
       setSelectedIdx(0);
       setLoading(false);
     },
-    [subjects, documents, quizzes, sessions],
+    [subjects, quizzes],
   );
 
   // debounce

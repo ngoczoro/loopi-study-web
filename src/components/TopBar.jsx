@@ -3,12 +3,12 @@ import { SidebarTrigger } from "@/components/sidebar";
 import { NotificationDropdown } from "@/components/NotificationDropdown";
 import { AdminNotificationDropdown } from "@/components/AdminNotificationDropdown";
 import { GlobalSearch } from "@/components/GlobalSearch";
-import { useAppStore } from "@/lib/store";
+import { useAuthStore } from "@/lib/authStore";
 import loopyHappy from "@/assets/loopy-happy.png";
 
 export function TopBar() {
-  const currentUser = useAppStore((s) => s.currentUser);
-  const isAdmin = currentUser?.role === "admin";
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === "admin";
   const navigate = useNavigate();
 
   const handleAvatarClick = () => {

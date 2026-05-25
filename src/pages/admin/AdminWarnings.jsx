@@ -1,4 +1,4 @@
-import { useAppStore } from "@/lib/store";
+import { useAdminDemoStore } from "@/lib/adminDemoStore";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -54,7 +54,8 @@ const violationTypeLabels = {
 };
 
 export default function AdminWarnings() {
-  const { violations, users, toggleLockUser, resolveViolation } = useAppStore();
+  const { violations, users, toggleLockUser, resolveViolation } =
+    useAdminDemoStore();
 
   const userViolations = violations.reduce((acc, v) => {
     if (!acc[v.userId]) acc[v.userId] = [];

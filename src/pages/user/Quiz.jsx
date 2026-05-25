@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { Eye, EyeOff, Sparkles, Loader2, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAppStore } from "@/lib/store";
+import { useAdminDemoStore } from "@/lib/adminDemoStore";
+import { useSubjects } from "@/hooks/useSubjects";
 import { toast } from "sonner";
 import { generateMockQuiz, moderateContent } from "@/lib/ai-utils";
 import { useLocation } from "react-router-dom";
@@ -10,7 +12,9 @@ import QuizResultSummary from "@/components/QuizResultSummary";
 import QuizQuestionCard from "@/components/QuizQuestionCard";
 
 export default function Quiz() {
-  const { quizzes, subjects, deleteQuiz, addQuiz, addViolation } = useAppStore();
+  const { quizzes, deleteQuiz, addQuiz } = useAppStore();
+  const { subjects } = useSubjects();
+  const addViolation = useAdminDemoStore((s) => s.addViolation);
   const [activeQuiz, setActiveQuiz] = useState(null);
   const [answers, setAnswers] = useState({});
   const [showResults, setShowResults] = useState(false);

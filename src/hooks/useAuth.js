@@ -1,43 +1,42 @@
 import { useEffect } from "react";
-import { useAuthStore } from "../lib/authStore";
+import { useAuthStore, selectIsAuthenticated } from "../lib/authStore.js";
 
 /**
- * Custom hook for authentication
+ * Auth hook — waits for canonical session hydration before exposing route state.
  */
 export const useAuth = () => {
-  const {
-    email,
-    user,
-    accessToken,
-    refreshToken,
-    isLoading,
-    error,
-    register,
-    verifyOTP,
-    resendOTP,
-    login,
-    logout,
-    forgotPassword,
-    resetPassword,
-    verifyResetOTP,
-    refreshToken: refreshTokenFn,
-    isAuthenticated,
-    restoreAuth,
-  } = useAuthStore();
+  const authReady = useAuthStore((s) => s.authReady);
+  const isAuthenticated = useAuthStore(selectIsAuthenticated);
+  const email = useAuthStore((s) => s.email);
+  const user = useAuthStore((s) => s.user);
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const refreshToken = useAuthStore((s) => s.refreshToken);
+  const isLoading = useAuthStore((s) => s.isLoading);
+  const error = useAuthStore((s) => s.error);
+  const register = useAuthStore((s) => s.register);
+  const verifyOTP = useAuthStore((s) => s.verifyOTP);
+  const resendOTP = useAuthStore((s) => s.resendOTP);
+  const login = useAuthStore((s) => s.login);
+  const logout = useAuthStore((s) => s.logout);
+  const forgotPassword = useAuthStore((s) => s.forgotPassword);
+  const resetPassword = useAuthStore((s) => s.resetPassword);
+  const verifyResetOTP = useAuthStore((s) => s.verifyResetOTP);
+  const refreshAccessToken = useAuthStore((s) => s.refreshAccessToken);
+  const initialize = useAuthStore((s) => s.initialize);
 
-  // Restore auth on app load
   useEffect(() => {
-    restoreAuth();
-  }, []);
+    initialize();
+  }, [initialize]);
 
   return {
+    authReady,
+    isAuthenticated,
     user,
     accessToken,
     refreshToken,
     isLoading,
     error,
     email,
-    isAuthenticated,
     register,
     verifyOTP,
     resendOTP,
@@ -46,6 +45,6 @@ export const useAuth = () => {
     forgotPassword,
     resetPassword,
     verifyResetOTP,
-    refreshToken: refreshTokenFn,
+    refreshToken: refreshAccessToken,
   };
 };

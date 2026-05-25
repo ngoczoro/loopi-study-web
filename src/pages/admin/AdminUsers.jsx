@@ -1,6 +1,6 @@
 "use client";
 
-import { useAppStore } from "@/lib/store";
+import { useAdminDemoStore } from "@/lib/adminDemoStore";
 import { motion } from "framer-motion";
 import { Lock, Unlock, Shield, User } from "lucide-react";
 import { toast } from "sonner";
@@ -25,7 +25,7 @@ import {
 } from "@/components/alert-dialog";
 
 export default function AdminUsers() {
-  const { users, toggleLockUser } = useAppStore();
+  const { users, toggleLockUser } = useAdminDemoStore();
   
   // Lọc danh sách student
   const students = users.filter((u) => u.role === "student");

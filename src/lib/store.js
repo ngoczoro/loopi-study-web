@@ -663,7 +663,7 @@ export const useAppStore = create((set, get) => ({
         );
         return { tasks: [...withoutDuplicate, result.data] };
       });
-      get().fetchTaskSummary();
+      await get().refreshTasksAndSummary();
       return { ok: true, data: result.data, message: result.message };
     }
     return { ok: false, message: result.message };
@@ -734,7 +734,7 @@ export const useAppStore = create((set, get) => ({
         item.id === id ? result.data : item,
       ),
     }));
-    await get().fetchTaskSummary();
+    await get().refreshTasksAndSummary();
     return { ok: true, data: result.data };
   },
 
@@ -760,7 +760,7 @@ export const useAppStore = create((set, get) => ({
 
     const result = await deleteTaskAPI(id);
     if (result.success) {
-      get().fetchTaskSummary();
+      await get().refreshTasksAndSummary();
       return { ok: true, message: result.message };
     }
 
