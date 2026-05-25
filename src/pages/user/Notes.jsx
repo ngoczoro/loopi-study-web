@@ -26,6 +26,7 @@ import {
   isValidUrl,
   normalizeSubjectId,
   validateUploadFile,
+  handleUploadFileSelection,
   FILE_INPUT_ACCEPT,
   SUPPORTED_FILES_LABEL,
 } from "@/lib/content-utils";
@@ -148,6 +149,7 @@ export default function Notes() {
       const fileCheck = validateUploadFile(selectedFile);
       if (!fileCheck.ok) {
         toast.error(fileCheck.message);
+        setSelectedFile(null);
         setIsSubmitting(false);
         return;
       }
@@ -725,7 +727,17 @@ export default function Notes() {
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
                     >
-                      <label className="flex flex-col items-center justify-center w-full h-28 rounded-xl border-2 border-dashed border-border hover:border-primary/40 bg-background/50 cursor-pointer transition-colors">
+                      <label
+                        className="flex flex-col items-center justify-center w-full h-28 rounded-xl border-2 border-dashed border-border hover:border-primary/40 bg-background/50 cursor-pointer transition-colors"
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          handleUploadFileSelection(e.dataTransfer.files, {
+                            setSelectedFile,
+                            toastError: toast.error,
+                          });
+                        }}
+                      >
                         <Upload
                           className="h-6 w-6 text-muted-foreground mb-2"
                           strokeWidth={1.5}
@@ -740,15 +752,13 @@ export default function Notes() {
                           className="hidden"
                           accept={FILE_INPUT_ACCEPT}
                           onChange={(e) => {
-                            const file = e.target.files?.[0] || null;
-                            if (!file) return;
-                            const check = validateUploadFile(file);
-                            if (!check.ok) {
-                              toast.error(check.message);
-                              e.target.value = "";
-                              return;
-                            }
-                            setSelectedFile(file);
+                            handleUploadFileSelection(e.target.files, {
+                              setSelectedFile,
+                              clearInput: () => {
+                                e.target.value = "";
+                              },
+                              toastError: toast.error,
+                            });
                           }}
                         />
                       </label>
