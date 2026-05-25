@@ -11,6 +11,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
+import { useAuthStore } from "@/lib/authStore";
 import { cn } from "@/lib/utils";
 
 const categoryMap = {
@@ -76,9 +77,16 @@ export function GlobalSearch() {
   const location = useLocation();
 
   const subjects = useAppStore((s) => s.subjects || []);
-  const documents = useAppStore((s) => s.documents || []);
+  const documents = useAppStore((s) => s.content || s.documents || []);
+  const fetchContent = useAppStore((s) => s.fetchContent);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const quizzes = useAppStore((s) => s.quizzes || []);
   const sessions = useAppStore((s) => s.sessions || []);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    fetchContent();
+  }, [accessToken, fetchContent]);
 
   const activeFilter = categoryMap[location.pathname] || "all";
 

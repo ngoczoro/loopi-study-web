@@ -29,6 +29,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/popover";
 import { toast } from "sonner";
 import { generateMockQuiz, moderateContent } from "@/lib/ai-utils";
 import {
+  isValidUrl,
+  normalizeSubjectId,
+  validateUploadFile,
+  FILE_INPUT_ACCEPT,
+  SUPPORTED_FILES_LABEL,
+} from "@/lib/content-utils";
+import { useAuthStore } from "@/lib/authStore";
+import { FilePreviewActions } from "@/components/FilePreviewActions";
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -51,7 +60,6 @@ import {
   AccordionTrigger,
   AccordionContent,
 } from "@/components/accordion";
-import { ScrollArea } from "@/components/scroll-area";
 
 const typeIcons = { note: FileText, file: Upload, link: Link2 };
 
@@ -67,20 +75,27 @@ const formatExamDate = (examDate) => {
 };
 
 export default function Subjects() {
+  const content = useAppStore((state) => state.content);
   const {
     subjects,
-    documents,
     quizzes,
     subjectsLoading,
     subjectsError,
+    contentLoading,
+    contentUploading,
+    contentError,
     fetchSubjects,
     fetchSubjectById,
+    fetchContent,
+    fetchContentBySubject,
     addSubject,
     updateSubject,
     deleteSubject,
-    addDocument,
-    deleteDocument,
-    updateDocument,
+    createContentNote,
+    createContentLink,
+    uploadContentFile,
+    updateContentItem,
+    deleteContentItem,
     addQuiz,
     addViolation,
   } = useAppStore();
@@ -106,12 +121,14 @@ export default function Subjects() {
     content: "",
     url: "",
   });
+  const [selectedFile, setSelectedFile] = useState(null);
   const [viewDoc, setViewDoc] = useState(null);
   const [editDoc, setEditDoc] = useState(null);
   const [editForm, setEditForm] = useState({
     title: "",
     content: "",
     subjectId: "",
+    fileName: "",
   });
 
   // Quick AI Quiz state (per subject)
@@ -121,6 +138,8 @@ export default function Subjects() {
   const [aiPreview, setAiPreview] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingSubjectId, setEditingSubjectId] = useState(null);
+
+  const accessToken = useAuthStore((s) => s.accessToken);
 
   const isEditMode = Boolean(editingSubjectId);
 
@@ -169,14 +188,22 @@ export default function Subjects() {
   };
 
   useEffect(() => {
+    if (!accessToken) return;
     fetchSubjects();
-  }, [fetchSubjects]);
+    fetchContent();
+  }, [accessToken, fetchSubjects, fetchContent]);
 
   useEffect(() => {
     if (subjectsError) {
       toast.error(subjectsError);
     }
   }, [subjectsError]);
+
+  useEffect(() => {
+    if (contentError) {
+      toast.error(contentError);
+    }
+  }, [contentError]);
 
   const handleSelectSubject = async (subject) => {
     setSelectedSubject(subject);
@@ -186,6 +213,7 @@ export default function Subjects() {
     } else if (result.message) {
       toast.error(result.message);
     }
+    await fetchContentBySubject(subject.id);
   };
 
   const openQuickQuiz = (s) => {
@@ -338,46 +366,101 @@ export default function Subjects() {
     toast.success("Subject deleted");
   };
 
-  const handleDeleteDoc = () => {
-    if (deleteDocId) {
-      deleteDocument(deleteDocId);
-      setDeleteDocId(null);
-      toast.success("Document deleted");
+  const handleDeleteDoc = async () => {
+    if (!deleteDocId) return;
+
+    setIsSubmitting(true);
+    const result = await deleteContentItem(deleteDocId);
+    setIsSubmitting(false);
+
+    if (!result.ok) {
+      toast.error(result.message || "Failed to delete document");
+      return;
     }
+
+    await fetchContent();
+    if (selectedSubject) {
+      await fetchContentBySubject(selectedSubject.id);
+    }
+
+    setDeleteDocId(null);
+    toast.success("Document deleted");
   };
 
-  const handleUpload = () => {
+  const resetUploadForm = () => {
+    setUploadForm({ title: "", subjectId: "", content: "", url: "" });
+    setSelectedFile(null);
+    setActiveTab("note");
+  };
+
+  const handleUpload = async () => {
+    // TEMP DISABLED:
+    // AI moderation for Content module is postponed until Phase 5.
+
     if (!uploadForm.title.trim()) {
       toast.error("Please add a title");
       return;
     }
-    const subId = uploadForm.subjectId || selectedSubject?.id || null;
-    addDocument({
-      title: uploadForm.title,
-      type: activeTab,
-      subjectId: subId,
-      date: new Date().toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      }),
-      content:
-        activeTab === "note"
-          ? uploadForm.content
-          : activeTab === "link"
-            ? uploadForm.url
-            : undefined,
-      ownerId: "u1",
-      ownerName: "Student",
-      createdAt: new Date().toLocaleString("en-US", {
-        month: "short",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    });
+
+    const subjectId = normalizeSubjectId(
+      uploadForm.subjectId || selectedSubject?.id || null,
+    );
+
+    setIsSubmitting(true);
+    let result;
+
+    if (activeTab === "note") {
+      if (!uploadForm.content.trim()) {
+        toast.error("Note content is required");
+        setIsSubmitting(false);
+        return;
+      }
+      result = await createContentNote({
+        title: uploadForm.title.trim(),
+        content: uploadForm.content.trim(),
+        subjectId,
+      });
+    } else if (activeTab === "link") {
+      if (!isValidUrl(uploadForm.url)) {
+        toast.error("Please enter a valid URL (https://...)");
+        setIsSubmitting(false);
+        return;
+      }
+      result = await createContentLink({
+        title: uploadForm.title.trim(),
+        content: uploadForm.url.trim(),
+        subjectId,
+      });
+    } else {
+      const fileCheck = validateUploadFile(selectedFile);
+      if (!fileCheck.ok) {
+        toast.error(fileCheck.message);
+        setIsSubmitting(false);
+        return;
+      }
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("title", uploadForm.title.trim());
+      if (subjectId) {
+        formData.append("subjectId", subjectId);
+      }
+      result = await uploadContentFile(formData);
+    }
+
+    setIsSubmitting(false);
+
+    if (!result.ok) {
+      toast.error(result.message || "Failed to save content");
+      return;
+    }
+
+    await fetchContent();
+    if (selectedSubject) {
+      await fetchContentBySubject(selectedSubject.id);
+    }
+
     setShowUpload(false);
-    setUploadForm({ title: "", subjectId: "", content: "", url: "" });
-    setActiveTab("note");
+    resetUploadForm();
     toast.success(
       activeTab === "file"
         ? "File uploaded! 📁"
@@ -391,27 +474,61 @@ export default function Subjects() {
     setEditDoc(doc);
     setEditForm({
       title: doc.title,
-      content: doc.content || "",
+      content: doc.content || doc.fileUrl || "",
       subjectId: doc.subjectId || "",
+      fileName: doc.fileName || "",
     });
   };
 
-  const handleEdit = () => {
+  const handleEdit = async () => {
     if (!editDoc || !editForm.title.trim()) {
       toast.error("Title required");
       return;
     }
-    updateDocument(editDoc.id, {
-      title: editForm.title,
-      content: editForm.content || undefined,
-      subjectId: editForm.subjectId || null,
-    });
+
+    if (editDoc.type === "link" && !isValidUrl(editForm.content)) {
+      toast.error("Please enter a valid URL");
+      return;
+    }
+
+    if (editDoc.type === "note" && !editForm.content.trim()) {
+      toast.error("Note content is required");
+      return;
+    }
+
+    const payload = {
+      title: editForm.title.trim(),
+      subjectId: normalizeSubjectId(editForm.subjectId),
+    };
+
+    if (editDoc.type === "note" || editDoc.type === "link") {
+      payload.content = editForm.content.trim();
+    }
+
+    if (editDoc.type === "file" && editForm.fileName.trim()) {
+      payload.fileName = editForm.fileName.trim();
+    }
+
+    setIsSubmitting(true);
+    const result = await updateContentItem(editDoc.id, payload);
+    setIsSubmitting(false);
+
+    if (!result.ok) {
+      toast.error(result.message || "Failed to update document");
+      return;
+    }
+
+    await fetchContent();
+    if (selectedSubject) {
+      await fetchContentBySubject(selectedSubject.id);
+    }
+
     setEditDoc(null);
     toast.success("Document updated! ✅");
   };
 
   const subjectDocs = selectedSubject
-    ? documents.filter((d) => d.subjectId === selectedSubject.id)
+    ? content.filter((d) => d.subjectId === selectedSubject.id)
     : [];
   const subjectQuizzes = selectedSubject
     ? quizzes.filter((q) => q.subjectId === selectedSubject.id)
@@ -656,12 +773,17 @@ export default function Subjects() {
                             <Plus className="h-3 w-3" strokeWidth={2} /> Upload
                           </button>
                         </div>
-                        {subjectDocs.length === 0 ? (
+                        {contentLoading && subjectDocs.length === 0 ? (
+                          <div className="flex items-center justify-center py-6 text-muted-foreground text-sm">
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            Loading documents...
+                          </div>
+                        ) : subjectDocs.length === 0 ? (
                           <p className="text-sm text-muted-foreground text-center py-4">
                             No documents yet. Upload your first one!
                           </p>
                         ) : (
-                          <ScrollArea className="max-h-60 rounded-xl">
+                          <div className="max-h-[320px] overflow-y-auto overflow-x-hidden rounded-xl">
                             <div className="space-y-1.5 pr-2">
                               {subjectDocs.map((doc) => {
                                 const Icon = typeIcons[doc.type];
@@ -721,7 +843,7 @@ export default function Subjects() {
                                 );
                               })}
                             </div>
-                          </ScrollArea>
+                          </div>
                         )}
                       </div>
                     </AccordionContent>
@@ -764,7 +886,7 @@ export default function Subjects() {
                             </button>
                           </div>
                         ) : (
-                          <ScrollArea className="max-h-60 rounded-xl">
+                          <div className="max-h-[320px] overflow-y-auto overflow-x-hidden rounded-xl">
                             <div className="space-y-1.5 pr-2">
                               {subjectQuizzes.map((quiz) => (
                                 <div
@@ -801,7 +923,7 @@ export default function Subjects() {
                                 </div>
                               ))}
                             </div>
-                          </ScrollArea>
+                          </div>
                         )}
                       </div>
                     </AccordionContent>
@@ -873,7 +995,33 @@ export default function Subjects() {
                     </p>
                   </div>
                 </div>
-                {viewDoc.content && (
+                {viewDoc.type === "file" && viewDoc.fileUrl && (
+                  <div className="bg-background rounded-xl p-4 border border-border">
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-2">
+                      File
+                    </p>
+                    <p className="text-sm text-foreground mb-2">
+                      {viewDoc.fileName || "Uploaded file"}
+                    </p>
+                    <FilePreviewActions item={viewDoc} />
+                  </div>
+                )}
+                {viewDoc.type === "link" && viewDoc.content && (
+                  <div className="bg-background rounded-xl p-4 border border-border">
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-2">
+                      URL
+                    </p>
+                    <a
+                      href={viewDoc.content}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary hover:underline break-all"
+                    >
+                      {viewDoc.content}
+                    </a>
+                  </div>
+                )}
+                {viewDoc.type === "note" && viewDoc.content && (
                   <div className="bg-background rounded-xl p-4 border border-border">
                     <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-2">
                       Content
@@ -952,6 +1100,16 @@ export default function Subjects() {
                     className="w-full rounded-xl bg-background px-4 py-3 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none resize-none"
                   />
                 )}
+                {editDoc.type === "file" && (
+                  <input
+                    placeholder="File name"
+                    value={editForm.fileName}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, fileName: e.target.value })
+                    }
+                    className="w-full h-10 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none"
+                  />
+                )}
                 <select
                   value={editForm.subjectId}
                   onChange={(e) =>
@@ -968,9 +1126,17 @@ export default function Subjects() {
                 </select>
                 <button
                   onClick={handleEdit}
-                  className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] active:scale-[0.98] transition-transform"
+                  disabled={isSubmitting}
+                  className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] active:scale-[0.98] transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  Save Changes
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save Changes"
+                  )}
                 </button>
               </div>
             </motion.div>
@@ -1129,7 +1295,10 @@ export default function Subjects() {
           <div className="fixed inset-0 z-[60] flex items-center justify-center">
             <div
               className="absolute inset-0 bg-foreground/20 backdrop-blur-sm"
-              onClick={() => setShowUpload(false)}
+              onClick={() => {
+                setShowUpload(false);
+                resetUploadForm();
+              }}
             />
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -1138,7 +1307,10 @@ export default function Subjects() {
               className="relative bg-card rounded-2xl p-6 shadow-soft-lg w-full max-w-md z-10"
             >
               <button
-                onClick={() => setShowUpload(false)}
+                onClick={() => {
+                  setShowUpload(false);
+                  resetUploadForm();
+                }}
                 className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
               >
                 <X className="h-4 w-4" />
@@ -1188,15 +1360,31 @@ export default function Subjects() {
                           className="h-6 w-6 text-muted-foreground mb-2"
                           strokeWidth={1.5}
                         />
-                        <span className="text-xs text-muted-foreground">
-                          Click to upload or drag & drop
+                        <span className="text-xs text-muted-foreground text-center px-4">
+                          {selectedFile
+                            ? selectedFile.name
+                            : "Click to upload or drag & drop"}
                         </span>
                         <input
                           type="file"
                           className="hidden"
-                          onChange={() => toast.info("File selected")}
+                          accept={FILE_INPUT_ACCEPT}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] || null;
+                            if (!file) return;
+                            const check = validateUploadFile(file);
+                            if (!check.ok) {
+                              toast.error(check.message);
+                              e.target.value = "";
+                              return;
+                            }
+                            setSelectedFile(file);
+                          }}
                         />
                       </label>
+                      <p className="text-xs text-muted-foreground mt-2 whitespace-pre-line">
+                        {SUPPORTED_FILES_LABEL}
+                      </p>
                     </motion.div>
                   )}
                   {activeTab === "note" && (
@@ -1255,13 +1443,21 @@ export default function Subjects() {
                 </select>
                 <button
                   onClick={handleUpload}
-                  className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform"
+                  disabled={isSubmitting || contentUploading}
+                  className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {activeTab === "file"
-                    ? "Upload File"
-                    : activeTab === "note"
-                      ? "Save Note"
-                      : "Add Link"}
+                  {isSubmitting || contentUploading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      {activeTab === "file" ? "Uploading..." : "Saving..."}
+                    </>
+                  ) : activeTab === "file" ? (
+                    "Upload File"
+                  ) : activeTab === "note" ? (
+                    "Save Note"
+                  ) : (
+                    "Add Link"
+                  )}
                 </button>
               </div>
             </motion.div>
@@ -1310,9 +1506,10 @@ export default function Subjects() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteDoc}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isSubmitting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
             >
-              Delete
+              {isSubmitting ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

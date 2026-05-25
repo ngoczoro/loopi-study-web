@@ -21,14 +21,16 @@ import {
   generateMockSummary,
   generateMockQuiz,
   suggestMaterials,
-  moderateContent,
 } from "@/lib/ai-utils";
 import {
-  getNotesAPI,
-  createNoteAPI,
-  updateNoteAPI,
-  deleteNoteAPI,
-} from "@/services/noteService";
+  isValidUrl,
+  normalizeSubjectId,
+  validateUploadFile,
+  FILE_INPUT_ACCEPT,
+  SUPPORTED_FILES_LABEL,
+} from "@/lib/content-utils";
+import { FilePreviewActions } from "@/components/FilePreviewActions";
+import { useAuthStore } from "@/lib/authStore";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,19 +47,23 @@ import {
 const typeIcons = { note: FileText, file: Upload, link: Link2 };
 
 export default function Notes() {
-  const {
-    documents,
-    subjects,
-    addDocument,
-    deleteDocument,
-    updateDocument,
-    addQuiz,
-    addViolation,
-  } = useAppStore();
+  const content = useAppStore((state) => state.content);
+  const subjects = useAppStore((state) => state.subjects);
+  const contentLoading = useAppStore((state) => state.contentLoading);
+  const contentUploading = useAppStore((state) => state.contentUploading);
+  const fetchContent = useAppStore((state) => state.fetchContent);
+  const fetchSubjects = useAppStore((state) => state.fetchSubjects);
+  const createContentNote = useAppStore((state) => state.createContentNote);
+  const createContentLink = useAppStore((state) => state.createContentLink);
+  const uploadContentFile = useAppStore((state) => state.uploadContentFile);
+  const updateContentItem = useAppStore((state) => state.updateContentItem);
+  const deleteContentItem = useAppStore((state) => state.deleteContentItem);
+  const addQuiz = useAppStore((state) => state.addQuiz);
 
-  const [notes, setNotes] = useState([]);
-  const [isLoadingNotes, setIsLoadingNotes] = useState(false);
+  const accessToken = useAuthStore((s) => s.accessToken);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
 
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
@@ -77,6 +83,7 @@ export default function Notes() {
     title: "",
     content: "",
     subjectId: "",
+    fileName: "",
   });
 
   const [deleteId, setDeleteId] = useState(null);
@@ -86,26 +93,13 @@ export default function Notes() {
   const [suggestions, setSuggestions] = useState([]);
   const [suggestSubjectId, setSuggestSubjectId] = useState("");
 
-  // Load notes on component mount
   useEffect(() => {
-    loadNotes();
-  }, []);
+    if (!accessToken) return;
+    fetchContent();
+    fetchSubjects();
+  }, [accessToken, fetchContent, fetchSubjects]);
 
-  const loadNotes = async () => {
-    setIsLoadingNotes(true);
-    const result = await getNotesAPI();
-
-    if (result.success) {
-      setNotes(result.data);
-    } else {
-      toast.error(result.message || "Failed to load notes");
-      console.error("Error loading notes:", result.error);
-    }
-    setIsLoadingNotes(false);
-  };
-
-  // Use notes from API if available, fallback to documents from store
-  const displayedNotes = notes.length > 0 ? notes : documents;
+  const displayedNotes = content;
   const filtered = displayedNotes.filter((d) =>
     d.title.toLowerCase().includes(search.toLowerCase()),
   );
@@ -121,153 +115,154 @@ export default function Notes() {
       return;
     }
 
-    const content =
-      activeTab === "note"
-        ? form.content
-        : activeTab === "link"
-          ? form.url
-          : undefined;
+    const subjectId = normalizeSubjectId(form.subjectId);
+    setIsSubmitting(true);
+    let result;
 
-    const modResult = moderateContent(form.title + " " + (content || ""));
+    // TEMP DISABLED:
+    // AI moderation for Content module is postponed until Phase 5.
 
-    if (modResult?.flagged) {
-      addViolation({
-        userId: "u1",
-        userName: "Student",
-        userEmail: "student@example.com",
-        type: modResult.type,
-        contentId: "",
-        contentTitle: form.title,
-        contentType: activeTab,
-        detectedAt: new Date().toLocaleString(),
-        resolved: false,
+    if (activeTab === "note") {
+      if (!form.content.trim()) {
+        toast.error("Note content is required");
+        setIsSubmitting(false);
+        return;
+      }
+      result = await createContentNote({
+        title: form.title.trim(),
+        content: form.content.trim(),
+        subjectId,
       });
+    } else if (activeTab === "link") {
+      if (!isValidUrl(form.url)) {
+        toast.error("Please enter a valid URL (https://...)");
+        setIsSubmitting(false);
+        return;
+      }
+      result = await createContentLink({
+        title: form.title.trim(),
+        content: form.url.trim(),
+        subjectId,
+      });
+    } else {
+      const fileCheck = validateUploadFile(selectedFile);
+      if (!fileCheck.ok) {
+        toast.error(fileCheck.message);
+        setIsSubmitting(false);
+        return;
+      }
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("title", form.title.trim());
+      if (subjectId) {
+        formData.append("subjectId", subjectId);
+      }
+      result = await uploadContentFile(formData);
+    }
 
-      toast.error("Content flagged by AI moderation.");
+    setIsSubmitting(false);
+
+    if (!result.ok) {
+      toast.error(result.message || "Failed to save content");
       return;
     }
 
-    setIsSubmitting(true);
-    const result = await createNoteAPI(
-      form.title,
-      content,
-      form.subjectId || null,
+    await fetchContent();
+
+    setShowAdd(false);
+    setForm({ title: "", subjectId: "", content: "", url: "" });
+    setSelectedFile(null);
+    toast.success(
+      activeTab === "file"
+        ? "File uploaded successfully"
+        : activeTab === "note"
+          ? "Note created successfully"
+          : "Link added successfully",
     );
-
-    if (result.success) {
-      // Add to local state
-      setNotes([...notes, result.data]);
-
-      // Also add to store for backward compatibility
-      addDocument({
-        title: form.title,
-        type: activeTab,
-        subjectId: form.subjectId || null,
-        date: new Date().toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        }),
-        content,
-        ownerId: "u1",
-        ownerName: "Student",
-        createdAt: new Date().toLocaleString("en-US", {
-          month: "short",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      });
-
-      setShowAdd(false);
-      setForm({ title: "", subjectId: "", content: "", url: "" });
-      toast.success("Note created successfully");
-    } else {
-      toast.error(result.message || "Failed to create note");
-      console.error("Error creating note:", result.error);
-    }
-    setIsSubmitting(false);
   };
 
   const handleDelete = async () => {
-    if (deleteId) {
-      setIsSubmitting(true);
-      const result = await deleteNoteAPI(deleteId);
+    if (!deleteId) return;
 
-      if (result.success) {
-        // Remove from local state
-        setNotes(notes.filter((n) => n.id !== deleteId));
+    setIsSubmitting(true);
+    const result = await deleteContentItem(deleteId);
+    setIsSubmitting(false);
 
-        // Also remove from store for backward compatibility
-        deleteDocument(deleteId);
-
-        toast.success("Note deleted successfully");
-      } else {
-        toast.error(result.message || "Failed to delete note");
-        console.error("Error deleting note:", result.error);
-      }
-      setIsSubmitting(false);
-      setDeleteId(null);
+    if (!result.ok) {
+      toast.error(result.message || "Failed to delete content");
+      return;
     }
+
+    await fetchContent();
+
+    toast.success("Content deleted successfully");
+    setDeleteId(null);
   };
 
   const openEdit = (doc) => {
     setEditDoc(doc);
     setEditForm({
       title: doc.title,
-      content: doc.content || "",
+      content: doc.content || doc.fileUrl || "",
       subjectId: doc.subjectId || "",
+      fileName: doc.fileName || "",
     });
   };
 
   const handleEdit = async () => {
     if (!editDoc || !editForm.title.trim()) return;
 
-    setIsSubmitting(true);
-    const result = await updateNoteAPI(editDoc.id, {
-      title: editForm.title,
-      content: editForm.content,
-      subjectId: editForm.subjectId || null,
-    });
-
-    if (result.success) {
-      // Update local state
-      setNotes(
-        notes.map((n) => (n.id === editDoc.id ? { ...n, ...editForm } : n)),
-      );
-
-      // Also update store for backward compatibility
-      updateDocument(editDoc.id, {
-        title: editForm.title,
-        content: editForm.content,
-        subjectId: editForm.subjectId || null,
-      });
-
-      setEditDoc(null);
-      toast.success("Note updated successfully");
-    } else {
-      toast.error(result.message || "Failed to update note");
-      console.error("Error updating note:", result.error);
+    if (editDoc.type === "link" && !isValidUrl(editForm.content)) {
+      toast.error("Please enter a valid URL");
+      return;
     }
+
+    if (editDoc.type === "note" && !editForm.content.trim()) {
+      toast.error("Note content is required");
+      return;
+    }
+
+    const payload = {
+      title: editForm.title.trim(),
+      subjectId: normalizeSubjectId(editForm.subjectId),
+    };
+
+    if (editDoc.type === "note" || editDoc.type === "link") {
+      payload.content = editForm.content.trim();
+    }
+
+    if (editDoc.type === "file" && editForm.fileName.trim()) {
+      payload.fileName = editForm.fileName.trim();
+    }
+
+    setIsSubmitting(true);
+    const result = await updateContentItem(editDoc.id, payload);
     setIsSubmitting(false);
+
+    if (!result.ok) {
+      toast.error(result.message || "Failed to update content");
+      return;
+    }
+
+    await fetchContent();
+
+    setEditDoc(null);
+    toast.success("Content updated successfully");
   };
 
-  // ===== AI ===== Summarize document
-  const handleSummarize = (doc) => {
+  const handleSummarize = async (doc) => {
     setAiLoading("summarize");
 
-    setTimeout(() => {
+    setTimeout(async () => {
       const summary = generateMockSummary(doc.title, doc.content);
 
-      addDocument({
+      await createContentNote({
         title: `Summary: ${doc.title}`,
-        type: "note",
-        subjectId: doc.subjectId,
-        date: new Date().toLocaleDateString(),
         content: summary,
-        ownerId: "u1",
-        ownerName: "Student",
-        createdAt: new Date().toLocaleString(),
+        subjectId: doc.subjectId,
       });
+
+      await fetchContent();
 
       setAiLoading(null);
       setViewDoc(null);
@@ -307,17 +302,30 @@ export default function Notes() {
     }, 800);
   };
 
-  const handleAddSuggestion = (sug) => {
-    addDocument({
-      title: sug.title,
-      type: sug.type,
-      subjectId: suggestSubjectId || null,
-      date: new Date().toLocaleDateString(),
-      content: sug.content,
-      ownerId: "u1",
-      ownerName: "Student",
-      createdAt: new Date().toLocaleString(),
-    });
+  const handleAddSuggestion = async (sug) => {
+    const subjectId = normalizeSubjectId(suggestSubjectId);
+    let result;
+    if (sug.type === "link") {
+      result = await createContentLink({
+        title: sug.title,
+        content: sug.content,
+        subjectId,
+      });
+    } else {
+      result = await createContentNote({
+        title: sug.title,
+        content: sug.content,
+        subjectId,
+      });
+    }
+
+    if (!result?.ok) {
+      toast.error(result?.message || "Failed to add material");
+      return;
+    }
+
+    await fetchContent();
+    toast.success("Material added");
   };
 
   const tabs = [
@@ -368,7 +376,13 @@ export default function Notes() {
       </div>
 
       <div className="space-y-2">
-        {filtered.map((note) => {
+        {contentLoading && filtered.length === 0 ? (
+          <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
+            <Loader2 className="h-5 w-5 animate-spin mr-2" />
+            Loading content...
+          </div>
+        ) : (
+          filtered.map((note) => {
           const Icon = typeIcons[note.type];
           return (
             <div
@@ -412,8 +426,9 @@ export default function Notes() {
               </div>
             </div>
           );
-        })}
-        {filtered.length === 0 && (
+        })
+        )}
+        {!contentLoading && filtered.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-8">
             No documents found.
           </p>
@@ -480,7 +495,30 @@ export default function Notes() {
                     </p>
                   </div>
                 </div>
-                {viewDoc.content && (
+                {viewDoc.type === "file" && viewDoc.fileUrl && (
+                  <div className="bg-background rounded-xl p-4 border border-border">
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-2">
+                      File
+                    </p>
+                    <FilePreviewActions item={viewDoc} />
+                  </div>
+                )}
+                {viewDoc.type === "link" && viewDoc.content && (
+                  <div className="bg-background rounded-xl p-4 border border-border">
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-2">
+                      URL
+                    </p>
+                    <a
+                      href={viewDoc.content}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary hover:underline break-all"
+                    >
+                      {viewDoc.content}
+                    </a>
+                  </div>
+                )}
+                {viewDoc.type === "note" && viewDoc.content && (
                   <div className="bg-background rounded-xl p-4 border border-border">
                     <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-2">
                       Content
@@ -593,6 +631,16 @@ export default function Notes() {
                     className="w-full rounded-xl bg-background px-4 py-3 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none resize-none"
                   />
                 )}
+                {editDoc.type === "file" && (
+                  <input
+                    placeholder="File name"
+                    value={editForm.fileName}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, fileName: e.target.value })
+                    }
+                    className="w-full h-10 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none"
+                  />
+                )}
                 <select
                   value={editForm.subjectId}
                   onChange={(e) =>
@@ -682,15 +730,31 @@ export default function Notes() {
                           className="h-6 w-6 text-muted-foreground mb-2"
                           strokeWidth={1.5}
                         />
-                        <span className="text-xs text-muted-foreground">
-                          Click to upload or drag & drop
+                        <span className="text-xs text-muted-foreground text-center px-4">
+                          {selectedFile
+                            ? selectedFile.name
+                            : "Click to upload or drag & drop"}
                         </span>
                         <input
                           type="file"
                           className="hidden"
-                          onChange={() => toast.info("File selected")}
+                          accept={FILE_INPUT_ACCEPT}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] || null;
+                            if (!file) return;
+                            const check = validateUploadFile(file);
+                            if (!check.ok) {
+                              toast.error(check.message);
+                              e.target.value = "";
+                              return;
+                            }
+                            setSelectedFile(file);
+                          }}
                         />
                       </label>
+                      <p className="text-xs text-muted-foreground mt-2 whitespace-pre-line">
+                        {SUPPORTED_FILES_LABEL}
+                      </p>
                     </motion.div>
                   )}
                   {activeTab === "note" && (
@@ -746,13 +810,13 @@ export default function Notes() {
                 </select>
                 <button
                   onClick={handleAdd}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || contentUploading}
                   className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  {isSubmitting ? (
+                  {isSubmitting || contentUploading ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Saving...
+                      {activeTab === "file" ? "Uploading..." : "Saving..."}
                     </>
                   ) : (
                     <>

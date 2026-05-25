@@ -19,6 +19,19 @@ import {
   updateSubject as updateSubjectAPI,
   deleteSubject as deleteSubjectAPI,
 } from "../services/subjectService";
+import {
+  getContent,
+  getContentBySubject,
+  createNote as createNoteAPI,
+  createLink as createLinkAPI,
+  uploadFile as uploadFileAPI,
+  updateContent as updateContentAPI,
+  deleteContent as deleteContentAPI,
+} from "../services/contentService";
+import {
+  mapContentItemForUI,
+  mapContentListForUI,
+} from "./content-utils";
 
 /**
  * @typedef {Object} Subject
@@ -134,83 +147,11 @@ export const useAppStore = create((set, get) => ({
   subjectsLoading: false,
   subjectsError: null,
 
-  documents: [
-    {
-      id: "d1",
-      title: "Linear Algebra – Ch.5 Summary",
-      subjectId: "s1",
-      type: "note",
-      date: "Mar 15",
-      content: "Summary of eigenvalues and eigenvectors...",
-      ownerId: "u1",
-      ownerName: "Alice",
-      createdAt: "Mar 15 09:30",
-    },
-    {
-      id: "d2",
-      title: "React Hooks Cheatsheet",
-      subjectId: "s2",
-      type: "note",
-      date: "Mar 14",
-      content: "useState, useEffect, useCallback...",
-      ownerId: "u1",
-      ownerName: "Alice",
-      createdAt: "Mar 14 14:20",
-    },
-    {
-      id: "d3",
-      title: "Genetics Diagram.pdf",
-      subjectId: "s3",
-      type: "file",
-      date: "Mar 13",
-      ownerId: "u2",
-      ownerName: "Bob",
-      createdAt: "Mar 13 11:00",
-    },
-    {
-      id: "d4",
-      title: "French Vocab List",
-      subjectId: "s4",
-      type: "note",
-      date: "Mar 12",
-      content: "Bonjour, merci, s'il vous plaît...",
-      ownerId: "u2",
-      ownerName: "Bob",
-      createdAt: "Mar 12 16:45",
-    },
-    {
-      id: "d5",
-      title: "Lecture Recording Link",
-      subjectId: "s5",
-      type: "link",
-      date: "Mar 11",
-      ownerId: "u3",
-      ownerName: "Charlie",
-      createdAt: "Mar 11 08:15",
-    },
-    {
-      id: "d6",
-      title: "BUY CHEAP STUFF NOW!!!",
-      subjectId: null,
-      type: "note",
-      date: "Mar 20",
-      content: "spam spam spam",
-      ownerId: "u3",
-      ownerName: "Charlie",
-      createdAt: "Mar 20 02:10",
-    },
-    {
-      id: "d7",
-      title: "Totally not studying lol",
-      subjectId: "s1",
-      type: "note",
-      date: "Mar 19",
-      content: "irrelevant random content",
-      ownerId: "u3",
-      ownerName: "Charlie",
-      createdAt: "Mar 19 23:50",
-    },
-  ],
+  content: [],
+  documents: [],
+  contentLoading: false,
+  contentUploading: false,
+  contentError: null,
 
   quizzes: [],
 
@@ -441,17 +382,124 @@ export const useAppStore = create((set, get) => ({
     return { ok: false, message: result.message };
   },
 
-  // Documents
-  addDocument: (d) =>
-    set((state) => ({ documents: [...state.documents, { ...d, id: uid() }] })),
-  updateDocument: (id, updates) =>
-    set((state) => ({
-      documents: state.documents.map((d) =>
-        d.id === id ? { ...d, ...updates } : d,
-      ),
-    })),
-  deleteDocument: (id) =>
-    set((state) => ({ documents: state.documents.filter((d) => d.id !== id) })),
+  // Content
+  upsertContentInState: (item) => {
+    if (!item?.id) return;
+
+    set((state) => {
+      const next = [
+        item,
+        ...state.content.filter((existing) => existing.id !== item.id),
+      ];
+      return { content: next, documents: next };
+    });
+  },
+
+  setContentState: (items) => {
+    const mapped = mapContentListForUI(Array.isArray(items) ? items : []);
+    set({ content: mapped, documents: mapped });
+  },
+
+  fetchContent: async () => {
+    set({ contentLoading: true, contentError: null });
+    const result = await getContent();
+    if (result.ok) {
+      get().setContentState(result.data);
+      set({ contentLoading: false, contentError: null });
+      return { ok: true, data: result.data };
+    }
+    set({ contentLoading: false, contentError: result.message });
+    return { ok: false, message: result.message };
+  },
+
+  fetchContentBySubject: async (subjectId) => {
+    set({ contentLoading: true, contentError: null });
+    const result = await getContentBySubject(subjectId);
+    if (result.ok) {
+      const mapped = mapContentListForUI(result.data);
+      set((state) => {
+        const other = state.content.filter((item) => item.subjectId !== subjectId);
+        const merged = [...mapped, ...other];
+        return {
+          content: merged,
+          documents: merged,
+          contentLoading: false,
+          contentError: null,
+        };
+      });
+      return { ok: true, data: result.data };
+    }
+
+    return get().fetchContent();
+  },
+
+  createContentNote: async (payload) => {
+    set({ contentError: null });
+    const result = await createNoteAPI(payload);
+    if (result.ok) {
+      const item = mapContentItemForUI(result.data);
+      get().upsertContentInState(item);
+      await get().fetchContent();
+      return { ok: true, data: item };
+    }
+    set({ contentError: result.message });
+    return { ok: false, message: result.message };
+  },
+
+  createContentLink: async (payload) => {
+    set({ contentError: null });
+    const result = await createLinkAPI(payload);
+    if (result.ok) {
+      const item = mapContentItemForUI(result.data);
+      get().upsertContentInState(item);
+      await get().fetchContent();
+      return { ok: true, data: item };
+    }
+    set({ contentError: result.message });
+    return { ok: false, message: result.message };
+  },
+
+  uploadContentFile: async (formData) => {
+    set({ contentUploading: true, contentError: null });
+    const result = await uploadFileAPI(formData);
+    if (result.ok) {
+      const item = mapContentItemForUI(result.data);
+      get().upsertContentInState(item);
+      await get().fetchContent();
+      set({ contentUploading: false, contentError: null });
+      return { ok: true, data: item };
+    }
+    set({ contentUploading: false, contentError: result.message });
+    return { ok: false, message: result.message };
+  },
+
+  updateContentItem: async (id, payload) => {
+    set({ contentError: null });
+    const result = await updateContentAPI(id, payload);
+    if (result.ok) {
+      const item = mapContentItemForUI(result.data);
+      get().upsertContentInState(item);
+      await get().fetchContent();
+      return { ok: true, data: item };
+    }
+    set({ contentError: result.message });
+    return { ok: false, message: result.message };
+  },
+
+  deleteContentItem: async (id) => {
+    set({ contentError: null });
+    const result = await deleteContentAPI(id);
+    if (result.ok) {
+      set((state) => {
+        const next = state.content.filter((c) => c.id !== id);
+        return { content: next, documents: next };
+      });
+      await get().fetchContent();
+      return { ok: true };
+    }
+    set({ contentError: result.message });
+    return { ok: false, message: result.message };
+  },
 
   // Users
   updateUser: (id, updates) => {

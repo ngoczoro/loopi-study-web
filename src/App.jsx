@@ -27,6 +27,7 @@ import AdminUsers from "./pages/admin/AdminUsers";
 import NotFound from "./pages/NotFound";
 import { AppSidebar } from "./components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "./components/sidebar";
+import { FilePreviewModal } from "./components/FilePreviewModal";
 
 import "./App.css";
 
@@ -95,6 +96,7 @@ function App() {
           </div>
         </main>
       </div>
+      <FilePreviewModal />
     </SidebarProvider>
   );
 }

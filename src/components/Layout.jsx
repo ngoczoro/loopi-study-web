@@ -1,6 +1,7 @@
 import { SidebarProvider } from "@/components/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { TopBar } from "@/components/TopBar";
+import { FilePreviewModal } from "@/components/FilePreviewModal";
 
 export function Layout({ children }) {
   return (
@@ -14,6 +15,7 @@ export function Layout({ children }) {
           </main>
         </div>
       </div>
+      <FilePreviewModal />
     </SidebarProvider>
   );
 }
