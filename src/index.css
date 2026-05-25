@@ -103,6 +103,30 @@
   ::-webkit-scrollbar-thumb:hover {
     background: hsl(340 40% 75%);
   }
+
+  .widget-scroll-area {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(340 30% 85%) transparent;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .widget-scroll-area::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  .widget-scroll-area::-webkit-scrollbar-track {
+    background: transparent;
+    margin-block: 4px;
+  }
+
+  .widget-scroll-area::-webkit-scrollbar-thumb {
+    background: hsl(340 35% 82%);
+    border-radius: 999px;
+  }
+
+  .widget-scroll-area::-webkit-scrollbar-thumb:hover {
+    background: hsl(340 45% 72%);
+  }
 }
 
 @layer utilities {

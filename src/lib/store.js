@@ -32,6 +32,14 @@ import {
   mapContentItemForUI,
   mapContentListForUI,
 } from "./content-utils";
+import {
+  getTasks,
+  getTaskSummary,
+  createTask as createTaskAPI,
+  updateTask as updateTaskAPI,
+  toggleTaskComplete as toggleTaskCompleteAPI,
+  deleteTask as deleteTaskAPI,
+} from "../services/taskService";
 
 /**
  * @typedef {Object} Subject
@@ -155,44 +163,14 @@ export const useAppStore = create((set, get) => ({
 
   quizzes: [],
 
-  tasks: [
-    {
-      id: "t1",
-      title: "Review Chapter 5 – Linear Algebra",
-      subjectId: "s1",
-      completed: false,
-      priority: "high",
-      taskDate: new Date().toISOString().slice(0, 10),
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "t2",
-      title: "Complete React tutorial exercises",
-      subjectId: "s2",
-      completed: true,
-      priority: "medium",
-      taskDate: new Date().toISOString().slice(0, 10),
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "t3",
-      title: "Read biology notes (Genetics)",
-      subjectId: "s3",
-      completed: false,
-      priority: "low",
-      taskDate: new Date().toISOString().slice(0, 10),
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "t4",
-      title: "Practice French vocabulary",
-      subjectId: "s4",
-      completed: false,
-      priority: "medium",
-      taskDate: new Date().toISOString().slice(0, 10),
-      createdAt: new Date().toISOString(),
-    },
-  ],
+  tasks: [],
+  tasksLoading: false,
+  tasksError: null,
+  tasksPagination: null,
+  lastTaskQuery: {},
+  taskSummary: null,
+  taskSummaryLoading: false,
+  taskSummaryError: null,
 
   sessions: [
     {
@@ -626,14 +604,167 @@ export const useAppStore = create((set, get) => ({
     })),
 
   // Tasks
-  addTask: (t) =>
-    set((state) => ({ tasks: [...state.tasks, { ...t, id: uid() }] })),
-  toggleTask: (id) =>
+  fetchTasks: async (params = {}) => {
+    const query = { ...get().lastTaskQuery, ...params };
+    set({ tasksLoading: true, tasksError: null, lastTaskQuery: query });
+
+    const result = await getTasks(query);
+    if (result.success) {
+      set({
+        tasks: result.data ?? [],
+        tasksPagination: result.pagination,
+        tasksLoading: false,
+        tasksError: null,
+      });
+      return { ok: true, data: result.data, pagination: result.pagination };
+    }
+
+    set({
+      tasksLoading: false,
+      tasksError: result.message,
+    });
+    return { ok: false, message: result.message };
+  },
+
+  fetchTaskSummary: async (params = {}) => {
+    set({ taskSummaryLoading: true, taskSummaryError: null });
+    const result = await getTaskSummary(params);
+
+    if (result.success) {
+      set({
+        taskSummary: result.data,
+        taskSummaryLoading: false,
+        taskSummaryError: null,
+      });
+      return { ok: true, data: result.data };
+    }
+
+    set({
+      taskSummaryLoading: false,
+      taskSummaryError: result.message,
+    });
+    return { ok: false, message: result.message };
+  },
+
+  refreshTasksAndSummary: async () => {
+    const { lastTaskQuery } = get();
+    await Promise.all([
+      get().fetchTasks(lastTaskQuery),
+      get().fetchTaskSummary(),
+    ]);
+  },
+
+  createTask: async (payload) => {
+    const result = await createTaskAPI(payload);
+    if (result.success) {
+      set((state) => {
+        const withoutDuplicate = state.tasks.filter(
+          (task) => task.id !== result.data.id,
+        );
+        return { tasks: [...withoutDuplicate, result.data] };
+      });
+      get().fetchTaskSummary();
+      return { ok: true, data: result.data, message: result.message };
+    }
+    return { ok: false, message: result.message };
+  },
+
+  updateTask: async (id, payload) => {
+    const previousTasks = get().tasks;
+
     set((state) => ({
-      tasks: state.tasks.map((t) =>
-        t.id === id ? { ...t, completed: !t.completed } : t,
+      tasks: state.tasks.map((task) =>
+        task.id === id ? { ...task, ...payload } : task,
       ),
-    })),
-  deleteTask: (id) =>
-    set((state) => ({ tasks: state.tasks.filter((t) => t.id !== id) })),
+    }));
+
+    const result = await updateTaskAPI(id, payload);
+    if (result.success) {
+      set((state) => ({
+        tasks: state.tasks.map((task) =>
+          task.id === id ? result.data : task,
+        ),
+      }));
+      return { ok: true, data: result.data, message: result.message };
+    }
+
+    set({ tasks: previousTasks });
+    return { ok: false, message: result.message };
+  },
+
+  toggleTaskComplete: async (id) => {
+    const task = get().tasks.find((item) => item.id === id);
+    if (!task) return { ok: false, message: "Task not found" };
+
+    const completed = !task.completed;
+    const previousTasks = get().tasks;
+    const previousSummary = get().taskSummary;
+
+    set((state) => ({
+      tasks: state.tasks.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              completed,
+              status: completed ? "completed" : "pending",
+            }
+          : item,
+      ),
+      taskSummary: previousSummary
+        ? {
+            ...previousSummary,
+            pendingCount: completed
+              ? Math.max(0, previousSummary.pendingCount - 1)
+              : previousSummary.pendingCount + 1,
+            completedCount: completed
+              ? previousSummary.completedCount + 1
+              : Math.max(0, previousSummary.completedCount - 1),
+          }
+        : null,
+    }));
+
+    const result = await toggleTaskCompleteAPI(id, completed);
+    if (!result.success) {
+      set({ tasks: previousTasks, taskSummary: previousSummary });
+      return { ok: false, message: result.message };
+    }
+
+    set((state) => ({
+      tasks: state.tasks.map((item) =>
+        item.id === id ? result.data : item,
+      ),
+    }));
+    await get().fetchTaskSummary();
+    return { ok: true, data: result.data };
+  },
+
+  deleteTask: async (id) => {
+    const previousTasks = get().tasks;
+    const previousSummary = get().taskSummary;
+    const removed = previousTasks.find((task) => task.id === id);
+
+    set((state) => ({
+      tasks: state.tasks.filter((task) => task.id !== id),
+      taskSummary: previousSummary && removed
+        ? {
+            ...previousSummary,
+            pendingCount: removed.completed
+              ? previousSummary.pendingCount
+              : Math.max(0, previousSummary.pendingCount - 1),
+            completedCount: removed.completed
+              ? Math.max(0, previousSummary.completedCount - 1)
+              : previousSummary.completedCount,
+          }
+        : previousSummary,
+    }));
+
+    const result = await deleteTaskAPI(id);
+    if (result.success) {
+      get().fetchTaskSummary();
+      return { ok: true, message: result.message };
+    }
+
+    set({ tasks: previousTasks, taskSummary: previousSummary });
+    return { ok: false, message: result.message };
+  },
 }));
