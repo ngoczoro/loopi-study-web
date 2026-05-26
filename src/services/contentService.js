@@ -58,7 +58,7 @@ export const getExcelPreview = async (id) => {
   return response.data.data;
 };
 
-export const createNote = async ({ title, content, description, subjectId }) => {
+export const createNote = async ({ title, content, description, subjectId, isPinned }) => {
   try {
     const response = await api.post("/content", {
       type: "note",
@@ -66,6 +66,7 @@ export const createNote = async ({ title, content, description, subjectId }) => 
       content,
       description: description || undefined,
       subjectId: normalizeSubjectId(subjectId),
+      isPinned: isPinned ?? undefined,
     });
     return handleResponse(response);
   } catch (error) {
@@ -102,8 +103,37 @@ export const uploadFile = async (formData) => {
   }
 };
 
-export const updateContent = async (id, payload) => {
+export const updateContent = async (id, payload, replacementFile = null) => {
   try {
+    if (replacementFile) {
+      const formData = new FormData();
+      formData.append("file", replacementFile);
+
+      if (payload.title !== undefined) {
+        formData.append("title", payload.title);
+      }
+      if (payload.content !== undefined) {
+        formData.append("content", payload.content);
+      }
+      if (payload.description !== undefined) {
+        formData.append("description", payload.description ?? "");
+      }
+      if (payload.subjectId !== undefined) {
+        formData.append(
+          "subjectId",
+          normalizeSubjectId(payload.subjectId) ?? "",
+        );
+      }
+      if (payload.isPinned !== undefined) {
+        formData.append("isPinned", String(payload.isPinned));
+      }
+
+      const response = await api.put(`/content/${id}`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return handleResponse(response);
+    }
+
     const body = { ...payload };
     if (body.subjectId !== undefined) {
       body.subjectId = normalizeSubjectId(body.subjectId);

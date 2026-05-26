@@ -451,9 +451,15 @@ export const useAppStore = create((set, get) => ({
     return { ok: false, message: result.message };
   },
 
-  updateContentItem: async (id, payload) => {
+  updateContentItem: async (id, payload, replacementFile = null) => {
     set({ contentError: null });
-    const result = await updateContentAPI(id, payload);
+    if (replacementFile) {
+      set({ contentUploading: true });
+    }
+    const result = await updateContentAPI(id, payload, replacementFile);
+    if (replacementFile) {
+      set({ contentUploading: false });
+    }
     if (result.ok) {
       const item = mapContentItemForUI(result.data);
       get().upsertContentInState(item);

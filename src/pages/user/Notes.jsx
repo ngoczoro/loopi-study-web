@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   FileText,
   Upload,
@@ -16,8 +16,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAppStore } from "@/lib/store";
-import { useAdminDemoStore } from "@/lib/adminDemoStore";
-import { useSubjects } from "@/hooks/useSubjects";
+import { useAuthStore } from "@/lib/authStore";
 import { toast } from "sonner";
 import {
   generateMockSummary,
@@ -25,11 +24,14 @@ import {
   suggestMaterials,
 } from "@/lib/ai-utils";
 import {
-  getNotesAPI,
-  createNoteAPI,
-  updateNoteAPI,
-  deleteNoteAPI,
-} from "@/services/noteService";
+  isValidUrl,
+  normalizeSubjectId,
+  validateUploadFile,
+  handleUploadFileSelection,
+  FILE_INPUT_ACCEPT,
+  SUPPORTED_FILES_LABEL,
+} from "@/lib/content-utils";
+import { FilePreviewActions } from "@/components/FilePreviewActions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,45 +43,45 @@ import {
   AlertDialogTitle,
 } from "@/components/alert-dialog";
 
-/** @typedef {import("@/lib/store").Document} Doc */
-
 const typeIcons = { note: FileText, file: Upload, link: Link2 };
 
+const defaultForm = { title: "", subjectId: "", content: "", url: "" };
+
 export default function Notes() {
+  const accessToken = useAuthStore((s) => s.accessToken);
+
   const {
-    documents,
+    content,
     subjects,
-    addDocument,
-    deleteDocument,
-    updateDocument,
+    contentLoading,
+    contentUploading,
+    contentError,
+    fetchContent,
+    fetchSubjects,
+    createContentNote,
+    createContentLink,
+    uploadContentFile,
+    updateContentItem,
+    deleteContentItem,
     addQuiz,
-    addViolation,
   } = useAppStore();
 
-  const [notes, setNotes] = useState([]);
-  const [isLoadingNotes, setIsLoadingNotes] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [replacementFile, setReplacementFile] = useState(null);
 
   const [search, setSearch] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [activeTab, setActiveTab] = useState("note");
-
-  const [form, setForm] = useState({
-    title: "",
-    subjectId: "",
-    content: "",
-    url: "",
-  });
+  const [form, setForm] = useState(defaultForm);
 
   const [viewDoc, setViewDoc] = useState(null);
   const [editDoc, setEditDoc] = useState(null);
-
   const [editForm, setEditForm] = useState({
     title: "",
     content: "",
     subjectId: "",
-    fileName: "",
   });
 
   const [deleteId, setDeleteId] = useState(null);
@@ -89,33 +91,43 @@ export default function Notes() {
   const [suggestions, setSuggestions] = useState([]);
   const [suggestSubjectId, setSuggestSubjectId] = useState("");
 
-  // Load notes on component mount
   useEffect(() => {
-    loadNotes();
-  }, []);
+    if (!accessToken) return;
+    fetchSubjects();
+    fetchContent();
+  }, [accessToken, fetchSubjects, fetchContent]);
 
-  const loadNotes = async () => {
-    setIsLoadingNotes(true);
-    const result = await getNotesAPI();
-
-    if (result.success) {
-      setNotes(result.data);
-    } else {
-      toast.error(result.message || "Failed to load notes");
-      console.error("Error loading notes:", result.error);
+  useEffect(() => {
+    if (contentError) {
+      toast.error(contentError);
     }
-    setIsLoadingNotes(false);
-  };
+  }, [contentError]);
 
-  // Use notes from API if available, fallback to documents from store
-  const displayedNotes = notes.length > 0 ? notes : documents;
-  const filtered = displayedNotes.filter((d) =>
-    d.title.toLowerCase().includes(search.toLowerCase()),
-  );
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return content.filter((item) => {
+      const matchesSearch =
+        !query || item.title?.toLowerCase().includes(query);
+      const matchesSubject =
+        !subjectFilter || item.subjectId === subjectFilter;
+      return matchesSearch && matchesSubject;
+    });
+  }, [content, search, subjectFilter]);
 
   const getSubjectName = (subjectId) => {
     if (!subjectId) return "General";
     return subjects.find((s) => s.id === subjectId)?.name || "Unknown";
+  };
+
+  const resetAddForm = () => {
+    setForm(defaultForm);
+    setSelectedFile(null);
+    setActiveTab("note");
+  };
+
+  const closeAddModal = () => {
+    setShowAdd(false);
+    resetAddForm();
   };
 
   const handleAdd = async () => {
@@ -124,134 +136,137 @@ export default function Notes() {
       return;
     }
 
-    const content =
-      activeTab === "note"
-        ? form.content
-        : activeTab === "link"
-          ? form.url
-          : undefined;
+    const subjectId = normalizeSubjectId(form.subjectId);
 
-    const modResult = moderateContent(form.title + " " + (content || ""));
+    setIsSubmitting(true);
+    let result;
 
-    if (modResult?.flagged) {
-      addViolation({
-        userId: "u1",
-        userName: "Student",
-        userEmail: "student@example.com",
-        type: modResult.type,
-        contentId: "",
-        contentTitle: form.title,
-        contentType: activeTab,
-        detectedAt: new Date().toLocaleString(),
-        resolved: false,
+    if (activeTab === "note") {
+      if (!form.content.trim()) {
+        toast.error("Note content is required");
+        setIsSubmitting(false);
+        return;
+      }
+      result = await createContentNote({
+        title: form.title.trim(),
+        content: form.content.trim(),
+        subjectId,
       });
+    } else if (activeTab === "link") {
+      if (!isValidUrl(form.url)) {
+        toast.error("Please enter a valid URL (https://...)");
+        setIsSubmitting(false);
+        return;
+      }
+      result = await createContentLink({
+        title: form.title.trim(),
+        content: form.url.trim(),
+        subjectId,
+      });
+    } else {
+      const fileCheck = validateUploadFile(selectedFile);
+      if (!fileCheck.ok) {
+        toast.error(fileCheck.message);
+        setSelectedFile(null);
+        setIsSubmitting(false);
+        return;
+      }
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("title", form.title.trim());
+      if (subjectId) {
+        formData.append("subjectId", subjectId);
+      }
+      result = await uploadContentFile(formData);
+    }
 
-      toast.error("Content flagged by AI moderation.");
+    setIsSubmitting(false);
+
+    if (!result.ok) {
+      toast.error(result.message || "Failed to save content");
       return;
     }
 
-    setIsSubmitting(true);
-    const result = await createNoteAPI(
-      form.title,
-      content,
-      form.subjectId || null,
+    closeAddModal();
+    toast.success(
+      activeTab === "file"
+        ? "File uploaded successfully"
+        : activeTab === "note"
+          ? "Note created successfully"
+          : "Link added successfully",
     );
-
-    if (result.success) {
-      // Add to local state
-      setNotes([...notes, result.data]);
-
-      // Also add to store for backward compatibility
-      addDocument({
-        title: form.title,
-        type: activeTab,
-        subjectId: form.subjectId || null,
-        date: new Date().toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        }),
-        content,
-        ownerId: "u1",
-        ownerName: "Student",
-        createdAt: new Date().toLocaleString("en-US", {
-          month: "short",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      });
-
-      setShowAdd(false);
-      setForm({ title: "", subjectId: "", content: "", url: "" });
-      toast.success("Note created successfully");
-    } else {
-      toast.error(result.message || "Failed to create note");
-      console.error("Error creating note:", result.error);
-    }
-    setIsSubmitting(false);
   };
 
   const handleDelete = async () => {
-    if (deleteId) {
-      setIsSubmitting(true);
-      const result = await deleteNoteAPI(deleteId);
+    if (!deleteId) return;
 
-      if (result.success) {
-        // Remove from local state
-        setNotes(notes.filter((n) => n.id !== deleteId));
+    setIsSubmitting(true);
+    const result = await deleteContentItem(deleteId);
+    setIsSubmitting(false);
 
-        // Also remove from store for backward compatibility
-        deleteDocument(deleteId);
-
-        toast.success("Note deleted successfully");
-      } else {
-        toast.error(result.message || "Failed to delete note");
-        console.error("Error deleting note:", result.error);
-      }
-      setIsSubmitting(false);
-      setDeleteId(null);
+    if (!result.ok) {
+      toast.error(result.message || "Failed to delete content");
+      return;
     }
+
+    setDeleteId(null);
+    toast.success("Content deleted successfully");
   };
 
   const openEdit = (doc) => {
     setEditDoc(doc);
+    setReplacementFile(null);
     setEditForm({
       title: doc.title,
       content: doc.content || doc.fileUrl || "",
       subjectId: doc.subjectId || "",
-      fileName: doc.fileName || "",
     });
   };
 
+  const closeEditModal = () => {
+    setEditDoc(null);
+    setReplacementFile(null);
+  };
+
   const handleEdit = async () => {
-    if (!editDoc || !editForm.title.trim()) return;
+    if (!editDoc || !editForm.title.trim()) {
+      toast.error("Title is required");
+      return;
+    }
+
+    if (editDoc.type === "link" && !isValidUrl(editForm.content)) {
+      toast.error("Please enter a valid URL");
+      return;
+    }
+
+    if (editDoc.type === "note" && !editForm.content.trim()) {
+      toast.error("Note content is required");
+      return;
+    }
+
+    const payload = {
+      title: editForm.title.trim(),
+      subjectId: normalizeSubjectId(editForm.subjectId),
+    };
+
+    if (editDoc.type === "note" || editDoc.type === "link") {
+      payload.content = editForm.content.trim();
+    }
+
+    if (editDoc.type === "file" && replacementFile) {
+      const fileCheck = validateUploadFile(replacementFile);
+      if (!fileCheck.ok) {
+        toast.error(fileCheck.message);
+        return;
+      }
+    }
 
     setIsSubmitting(true);
-    const result = await updateNoteAPI(editDoc.id, {
-      title: editForm.title,
-      content: editForm.content,
-      subjectId: editForm.subjectId || null,
-    });
-
-    if (result.success) {
-      // Update local state
-      setNotes(
-        notes.map((n) => (n.id === editDoc.id ? { ...n, ...editForm } : n)),
-      );
-
-      // Also update store for backward compatibility
-      updateDocument(editDoc.id, {
-        title: editForm.title,
-        content: editForm.content,
-        subjectId: editForm.subjectId || null,
-      });
-
-      setEditDoc(null);
-      toast.success("Note updated successfully");
-    } else {
-      toast.error(result.message || "Failed to update note");
-      console.error("Error updating note:", result.error);
-    }
+    const result = await updateContentItem(
+      editDoc.id,
+      payload,
+      editDoc.type === "file" ? replacementFile : null,
+    );
     setIsSubmitting(false);
 
     if (!result.ok) {
@@ -259,35 +274,26 @@ export default function Notes() {
       return;
     }
 
-    await fetchContent();
-
-    setEditDoc(null);
+    closeEditModal();
     toast.success("Content updated successfully");
   };
 
-  const handleSummarize = async (doc) => {
+  const handleSummarize = (doc) => {
     setAiLoading("summarize");
 
     setTimeout(async () => {
       const summary = generateMockSummary(doc.title, doc.content);
-
-      addDocument({
+      await createContentNote({
         title: `Summary: ${doc.title}`,
-        type: "note",
-        subjectId: doc.subjectId,
-        date: new Date().toLocaleDateString(),
         content: summary,
-        ownerId: "u1",
-        ownerName: "Student",
-        createdAt: new Date().toLocaleString(),
+        subjectId: doc.subjectId || null,
       });
-
       setAiLoading(null);
       setViewDoc(null);
+      toast.success("Summary note created");
     }, 1000);
   };
 
-  // ===== AI ===== Generate quiz from document
   const handleGenerateQuizFromDoc = (doc) => {
     setAiLoading("quiz");
 
@@ -303,10 +309,10 @@ export default function Notes() {
 
       setAiLoading(null);
       setViewDoc(null);
+      toast.success("Quiz generated");
     }, 1000);
   };
 
-  // ===== AI ===== Suggest materials based on subject
   const handleSuggestMaterials = () => {
     const subjectName =
       subjects.find((s) => s.id === suggestSubjectId)?.name || "General Study";
@@ -314,23 +320,32 @@ export default function Notes() {
     setAiLoading("suggest");
 
     setTimeout(() => {
-      const results = suggestMaterials(subjectName);
-      setSuggestions(results);
+      setSuggestions(suggestMaterials(subjectName));
       setAiLoading(null);
     }, 800);
   };
 
-  const handleAddSuggestion = (sug) => {
-    addDocument({
-      title: sug.title,
-      type: sug.type,
-      subjectId: suggestSubjectId || null,
-      date: new Date().toLocaleDateString(),
-      content: sug.content,
-      ownerId: "u1",
-      ownerName: "Student",
-      createdAt: new Date().toLocaleString(),
-    });
+  const handleAddSuggestion = async (sug) => {
+    const subjectId = normalizeSubjectId(suggestSubjectId);
+
+    const result =
+      sug.type === "link"
+        ? await createContentLink({
+            title: sug.title,
+            content: sug.content,
+            subjectId,
+          })
+        : await createContentNote({
+            title: sug.title,
+            content: sug.content,
+            subjectId,
+          });
+
+    if (result.ok) {
+      toast.success("Suggestion added");
+    } else {
+      toast.error(result.message || "Failed to add suggestion");
+    }
   };
 
   const tabs = [
@@ -338,6 +353,9 @@ export default function Notes() {
     { key: "note", label: "Write Note", icon: PenLine },
     { key: "link", label: "Add Link", icon: Link2 },
   ];
+
+  const isBusy = isSubmitting || contentUploading;
+  const isEditBusy = isSubmitting || (editDoc?.type === "file" && contentUploading);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
@@ -366,18 +384,32 @@ export default function Notes() {
         </div>
       </div>
 
-      <div className="relative">
-        <Search
-          className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
-          strokeWidth={1.5}
-        />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search notes & documents..."
-          className="w-full h-10 rounded-xl bg-card pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground shadow-soft outline-none focus:ring-2 focus:ring-primary/20"
-        />
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search
+            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+            strokeWidth={1.5}
+          />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search notes & documents..."
+            className="w-full h-10 rounded-xl bg-card pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground shadow-soft outline-none focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+        <select
+          value={subjectFilter}
+          onChange={(e) => setSubjectFilter(e.target.value)}
+          className="h-10 rounded-xl bg-card px-3 text-sm text-foreground shadow-soft outline-none focus:ring-2 focus:ring-primary/20 sm:min-w-[180px]"
+        >
+          <option value="">All subjects</option>
+          {subjects.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="space-y-2">
@@ -388,50 +420,50 @@ export default function Notes() {
           </div>
         ) : (
           filtered.map((note) => {
-          const Icon = typeIcons[note.type];
-          return (
-            <div
-              key={note.id}
-              className="bg-card rounded-xl p-4 shadow-soft flex items-center gap-4 hover:shadow-soft-md transition-shadow group"
-            >
-              <div className="h-10 w-10 rounded-xl bg-secondary flex items-center justify-center shrink-0">
-                <Icon className="h-5 w-5 text-primary" strokeWidth={1.5} />
-              </div>
+            const Icon = typeIcons[note.type] || FileText;
+            return (
               <div
-                className="flex-1 min-w-0 cursor-pointer"
-                onClick={() => setViewDoc(note)}
+                key={note.id}
+                className="bg-card rounded-xl p-4 shadow-soft flex items-center gap-4 hover:shadow-soft-md transition-shadow group"
               >
-                <p className="text-sm font-medium text-foreground truncate">
-                  {note.title}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {getSubjectName(note.subjectId)} · {note.date} ·{" "}
-                  {note.createdAt}
-                </p>
-              </div>
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
+                <div className="h-10 w-10 rounded-xl bg-secondary flex items-center justify-center shrink-0">
+                  <Icon className="h-5 w-5 text-primary" strokeWidth={1.5} />
+                </div>
+                <div
+                  className="flex-1 min-w-0 cursor-pointer"
                   onClick={() => setViewDoc(note)}
-                  className="h-8 w-8 rounded-lg hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
                 >
-                  <Eye className="h-4 w-4" strokeWidth={1.5} />
-                </button>
-                <button
-                  onClick={() => openEdit(note)}
-                  className="h-8 w-8 rounded-lg hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
-                >
-                  <Edit3 className="h-4 w-4" strokeWidth={1.5} />
-                </button>
-                <button
-                  onClick={() => setDeleteId(note.id)}
-                  className="h-8 w-8 rounded-lg hover:bg-destructive/10 flex items-center justify-center text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4" strokeWidth={1.5} />
-                </button>
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {note.title}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {getSubjectName(note.subjectId)} · {note.date} ·{" "}
+                    {note.createdAt}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => setViewDoc(note)}
+                    className="h-8 w-8 rounded-lg hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
+                  >
+                    <Eye className="h-4 w-4" strokeWidth={1.5} />
+                  </button>
+                  <button
+                    onClick={() => openEdit(note)}
+                    className="h-8 w-8 rounded-lg hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
+                  >
+                    <Edit3 className="h-4 w-4" strokeWidth={1.5} />
+                  </button>
+                  <button
+                    onClick={() => setDeleteId(note.id)}
+                    className="h-8 w-8 rounded-lg hover:bg-destructive/10 flex items-center justify-center text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" strokeWidth={1.5} />
+                  </button>
+                </div>
               </div>
-            </div>
-          );
-        })
+            );
+          })
         )}
         {!contentLoading && filtered.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-8">
@@ -440,7 +472,6 @@ export default function Notes() {
         )}
       </div>
 
-      {/* View Detail Modal with AI features */}
       <AnimatePresence>
         {viewDoc && (
           <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -463,7 +494,7 @@ export default function Notes() {
               <div className="flex items-center gap-3 mb-4">
                 <div className="h-10 w-10 rounded-xl bg-secondary flex items-center justify-center">
                   {(() => {
-                    const Icon = typeIcons[viewDoc.type];
+                    const Icon = typeIcons[viewDoc.type] || FileText;
                     return (
                       <Icon
                         className="h-5 w-5 text-primary"
@@ -535,7 +566,6 @@ export default function Notes() {
                 )}
               </div>
 
-              {/* AI Actions */}
               <div className="mt-4 pt-3 border-t border-border/50">
                 <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-2">
                   AI Actions
@@ -593,13 +623,12 @@ export default function Notes() {
         )}
       </AnimatePresence>
 
-      {/* Edit Modal */}
       <AnimatePresence>
         {editDoc && (
           <div className="fixed inset-0 z-50 flex items-center justify-center">
             <div
               className="absolute inset-0 bg-foreground/20 backdrop-blur-sm"
-              onClick={() => setEditDoc(null)}
+              onClick={closeEditModal}
             />
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -608,7 +637,7 @@ export default function Notes() {
               className="relative bg-card rounded-2xl p-6 shadow-soft-lg w-full max-w-md z-10"
             >
               <button
-                onClick={() => setEditDoc(null)}
+                onClick={closeEditModal}
                 className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
               >
                 <X className="h-4 w-4" />
@@ -637,14 +666,40 @@ export default function Notes() {
                   />
                 )}
                 {editDoc.type === "file" && (
-                  <input
-                    placeholder="File name"
-                    value={editForm.fileName}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, fileName: e.target.value })
-                    }
-                    className="w-full h-10 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none"
-                  />
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Current File
+                    </p>
+                    <p className="text-sm text-foreground bg-secondary/40 rounded-xl px-4 py-2.5 break-all">
+                      {editDoc.fileName || "Uploaded file"}
+                    </p>
+                    <label className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-full bg-secondary text-secondary-foreground text-sm font-medium cursor-pointer hover:bg-secondary/80 transition-colors">
+                      <Upload className="h-4 w-4" strokeWidth={1.5} />
+                      Replace File
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept={FILE_INPUT_ACCEPT}
+                        onChange={(e) => {
+                          handleUploadFileSelection(e.target.files, {
+                            setSelectedFile: setReplacementFile,
+                            clearInput: () => {
+                              e.target.value = "";
+                            },
+                            toastError: toast.error,
+                          });
+                        }}
+                      />
+                    </label>
+                    {replacementFile && (
+                      <p className="text-xs text-muted-foreground break-all">
+                        New file: {replacementFile.name}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground whitespace-pre-line">
+                      {SUPPORTED_FILES_LABEL}
+                    </p>
+                  </div>
                 )}
                 <select
                   value={editForm.subjectId}
@@ -662,10 +717,10 @@ export default function Notes() {
                 </select>
                 <button
                   onClick={handleEdit}
-                  disabled={isSubmitting}
+                  disabled={isEditBusy}
                   className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  {isSubmitting ? (
+                  {isEditBusy ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
                       Saving...
@@ -680,13 +735,12 @@ export default function Notes() {
         )}
       </AnimatePresence>
 
-      {/* Add Modal */}
       <AnimatePresence>
         {showAdd && (
           <div className="fixed inset-0 z-50 flex items-center justify-center">
             <div
               className="absolute inset-0 bg-foreground/20 backdrop-blur-sm"
-              onClick={() => setShowAdd(false)}
+              onClick={closeAddModal}
             />
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -695,7 +749,7 @@ export default function Notes() {
               className="relative bg-card rounded-2xl p-6 shadow-soft-lg w-full max-w-md z-10"
             >
               <button
-                onClick={() => setShowAdd(false)}
+                onClick={closeAddModal}
                 className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
               >
                 <X className="h-4 w-4" />
@@ -823,10 +877,10 @@ export default function Notes() {
                 </select>
                 <button
                   onClick={handleAdd}
-                  disabled={isSubmitting || contentUploading}
+                  disabled={isBusy}
                   className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  {isSubmitting || contentUploading ? (
+                  {isBusy ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
                       {activeTab === "file" ? "Uploading..." : "Saving..."}
@@ -847,7 +901,6 @@ export default function Notes() {
         )}
       </AnimatePresence>
 
-      {/* AI Suggest Materials Modal */}
       <AnimatePresence>
         {showSuggestions && (
           <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -947,10 +1000,9 @@ export default function Notes() {
         )}
       </AnimatePresence>
 
-      {/* Delete Confirmation */}
       <AlertDialog
         open={!!deleteId}
-        onOpenChange={(o) => !o && setDeleteId(null)}
+        onOpenChange={(open) => !open && setDeleteId(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>

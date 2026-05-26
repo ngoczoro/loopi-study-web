@@ -1,144 +1,80 @@
-import api from "./api";
+import {
+  getContent,
+  createNote,
+  updateContent,
+  deleteContent,
+} from "./contentService";
+import { mapContentItemForUI, mapContentListForUI } from "../lib/content-utils";
 
-/**
- * Get all notes for the current user
- * @returns {Promise}
- */
-export const getNotesAPI = async () => {
-  try {
-    const response = await api.get("/notes");
-
+const toServiceResult = (result, fallbackMessage) => {
+  if (result.ok) {
     return {
       success: true,
-      data: response.data.data,
-      message: response.data.message,
-    };
-  } catch (error) {
-    console.error("Error fetching notes:", error);
-    return {
-      success: false,
-      message: error.response?.data?.message || "Failed to fetch notes",
-      error: error.response?.data,
+      data: result.data,
+      message: result.message,
     };
   }
+  return {
+    success: false,
+    message: result.message || fallbackMessage,
+    error: result.error,
+  };
 };
 
-/**
- * Create a new note
- * @param {string} title - Note title
- * @param {string} content - Note content
- * @param {string} subjectId - Subject ID (optional, format: "s5" -> 5)
- * @param {boolean} isPinned - Whether note is pinned (optional)
- * @returns {Promise}
- */
+export const getNotesAPI = async () => {
+  const result = await getContent({ type: "note" });
+  if (result.ok) {
+    return {
+      success: true,
+      data: mapContentListForUI(result.data),
+      message: result.message,
+    };
+  }
+  return toServiceResult(result, "Failed to fetch notes");
+};
+
 export const createNoteAPI = async (
   title,
   content,
   subjectId = null,
   isPinned = false,
 ) => {
-  try {
-    // Convert subjectId from "s5" format to number 5
-    let parsedSubjectId = null;
-    if (subjectId) {
-      if (typeof subjectId === "string") {
-        parsedSubjectId = Number(subjectId.replace(/[^0-9]/g, ""));
-      } else {
-        parsedSubjectId = Number(subjectId);
-      }
-      // Validate it's a valid number
-      if (isNaN(parsedSubjectId)) {
-        parsedSubjectId = null;
-      }
-    }
+  const result = await createNote({
+    title,
+    content,
+    subjectId: subjectId || null,
+    isPinned,
+  });
 
-    const response = await api.post("/notes", {
-      title,
-      content,
-      subjectId: parsedSubjectId,
-      isPinned,
-    });
-
+  if (result.ok) {
     return {
       success: true,
-      data: response.data.data,
-      message: response.data.message,
-    };
-  } catch (error) {
-    console.error("Error creating note:", error);
-    return {
-      success: false,
-      message: error.response?.data?.message || "Failed to create note",
-      error: error.response?.data,
+      data: mapContentItemForUI(result.data),
+      message: result.message,
     };
   }
+  return toServiceResult(result, "Failed to create note");
 };
 
-/**
- * Update an existing note
- * @param {string} noteId - Note ID
- * @param {object} updateData - Data to update (title, content, subjectId, isPinned)
- * @returns {Promise}
- */
 export const updateNoteAPI = async (noteId, updateData) => {
-  try {
-    // Convert subjectId from "s5" format to number 5 if present
-    const processedData = { ...updateData };
-
-    if (
-      processedData.subjectId !== undefined &&
-      processedData.subjectId !== null
-    ) {
-      if (typeof processedData.subjectId === "string") {
-        processedData.subjectId = Number(
-          processedData.subjectId.replace(/[^0-9]/g, ""),
-        );
-      } else {
-        processedData.subjectId = Number(processedData.subjectId);
-      }
-      // Validate it's a valid number
-      if (isNaN(processedData.subjectId)) {
-        processedData.subjectId = null;
-      }
-    }
-
-    const response = await api.put(`/notes/${noteId}`, processedData);
-
+  const result = await updateContent(noteId, updateData);
+  if (result.ok) {
     return {
       success: true,
-      data: response.data.data,
-      message: response.data.message,
-    };
-  } catch (error) {
-    console.error("Error updating note:", error);
-    return {
-      success: false,
-      message: error.response?.data?.message || "Failed to update note",
-      error: error.response?.data,
+      data: mapContentItemForUI(result.data),
+      message: result.message,
     };
   }
+  return toServiceResult(result, "Failed to update note");
 };
 
-/**
- * Delete a note
- * @param {string} noteId - Note ID
- * @returns {Promise}
- */
 export const deleteNoteAPI = async (noteId) => {
-  try {
-    const response = await api.delete(`/notes/${noteId}`);
-
+  const result = await deleteContent(noteId);
+  if (result.ok) {
     return {
       success: true,
-      data: response.data.data,
-      message: response.data.message,
-    };
-  } catch (error) {
-    console.error("Error deleting note:", error);
-    return {
-      success: false,
-      message: error.response?.data?.message || "Failed to delete note",
-      error: error.response?.data,
+      message: result.message,
     };
   }
+  return toServiceResult(result, "Failed to delete note");
 };

@@ -123,13 +123,13 @@ export default function Subjects() {
     url: "",
   });
   const [selectedFile, setSelectedFile] = useState(null);
+  const [replacementFile, setReplacementFile] = useState(null);
   const [viewDoc, setViewDoc] = useState(null);
   const [editDoc, setEditDoc] = useState(null);
   const [editForm, setEditForm] = useState({
     title: "",
     content: "",
     subjectId: "",
-    fileName: "",
   });
 
   // Quick AI Quiz state (per subject)
@@ -474,12 +474,17 @@ export default function Subjects() {
 
   const openEdit = (doc) => {
     setEditDoc(doc);
+    setReplacementFile(null);
     setEditForm({
       title: doc.title,
       content: doc.content || doc.fileUrl || "",
       subjectId: doc.subjectId || "",
-      fileName: doc.fileName || "",
     });
+  };
+
+  const closeEditModal = () => {
+    setEditDoc(null);
+    setReplacementFile(null);
   };
 
   const handleEdit = async () => {
@@ -507,12 +512,20 @@ export default function Subjects() {
       payload.content = editForm.content.trim();
     }
 
-    if (editDoc.type === "file" && editForm.fileName.trim()) {
-      payload.fileName = editForm.fileName.trim();
+    if (editDoc.type === "file" && replacementFile) {
+      const fileCheck = validateUploadFile(replacementFile);
+      if (!fileCheck.ok) {
+        toast.error(fileCheck.message);
+        return;
+      }
     }
 
     setIsSubmitting(true);
-    const result = await updateContentItem(editDoc.id, payload);
+    const result = await updateContentItem(
+      editDoc.id,
+      payload,
+      editDoc.type === "file" ? replacementFile : null,
+    );
     setIsSubmitting(false);
 
     if (!result.ok) {
@@ -525,7 +538,7 @@ export default function Subjects() {
       await fetchContentBySubject(selectedSubject.id);
     }
 
-    setEditDoc(null);
+    closeEditModal();
     toast.success("Document updated! ✅");
   };
 
@@ -535,6 +548,8 @@ export default function Subjects() {
   const subjectQuizzes = selectedSubject
     ? quizzes.filter((q) => q.subjectId === selectedSubject.id)
     : [];
+  const isEditBusy =
+    isSubmitting || (editDoc?.type === "file" && contentUploading);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 animate-fade-in">
@@ -1065,7 +1080,7 @@ export default function Subjects() {
           <div className="fixed inset-0 z-[60] flex items-center justify-center">
             <div
               className="absolute inset-0 bg-foreground/20 backdrop-blur-sm"
-              onClick={() => setEditDoc(null)}
+              onClick={closeEditModal}
             />
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -1074,7 +1089,7 @@ export default function Subjects() {
               className="relative bg-card rounded-2xl p-6 shadow-soft-lg w-full max-w-md z-10"
             >
               <button
-                onClick={() => setEditDoc(null)}
+                onClick={closeEditModal}
                 className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
               >
                 <X className="h-4 w-4" />
@@ -1103,14 +1118,40 @@ export default function Subjects() {
                   />
                 )}
                 {editDoc.type === "file" && (
-                  <input
-                    placeholder="File name"
-                    value={editForm.fileName}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, fileName: e.target.value })
-                    }
-                    className="w-full h-10 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none"
-                  />
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Current File
+                    </p>
+                    <p className="text-sm text-foreground bg-secondary/40 rounded-xl px-4 py-2.5 break-all">
+                      {editDoc.fileName || "Uploaded file"}
+                    </p>
+                    <label className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-full bg-secondary text-secondary-foreground text-sm font-medium cursor-pointer hover:bg-secondary/80 transition-colors">
+                      <Upload className="h-4 w-4" strokeWidth={1.5} />
+                      Replace File
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept={FILE_INPUT_ACCEPT}
+                        onChange={(e) => {
+                          handleUploadFileSelection(e.target.files, {
+                            setSelectedFile: setReplacementFile,
+                            clearInput: () => {
+                              e.target.value = "";
+                            },
+                            toastError: toast.error,
+                          });
+                        }}
+                      />
+                    </label>
+                    {replacementFile && (
+                      <p className="text-xs text-muted-foreground break-all">
+                        New file: {replacementFile.name}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground whitespace-pre-line">
+                      {SUPPORTED_FILES_LABEL}
+                    </p>
+                  </div>
                 )}
                 <select
                   value={editForm.subjectId}
@@ -1128,10 +1169,10 @@ export default function Subjects() {
                 </select>
                 <button
                   onClick={handleEdit}
-                  disabled={isSubmitting}
+                  disabled={isEditBusy}
                   className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] active:scale-[0.98] transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {isSubmitting ? (
+                  {isEditBusy ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
                       Saving...
