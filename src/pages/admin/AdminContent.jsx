@@ -1,8 +1,12 @@
-import { useAdminDemoStore } from "@/lib/adminDemoStore";
-import { useSubjects } from "@/hooks/useSubjects";
-import { useSubjectMutations } from "@/hooks/queries/subjects";
+import {
+  useAdminContent,
+  useAdminDeleteContent,
+  useAdminDeleteSubject,
+  useAdminSubjects,
+} from "@/hooks/queries/adminContent";
+import { formatAdminUserDate } from "@/lib/adminUserUtils";
 import { motion } from "framer-motion";
-import { Trash2, FileText, BookOpen, Link2 } from "lucide-react";
+import { BookOpen, FileText, Link2, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Table,
@@ -23,6 +27,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/alert-dialog";
+import { Skeleton } from "@/components/skeleton";
 
 const typeIcon = {
   note: FileText,
@@ -30,22 +35,73 @@ const typeIcon = {
   link: Link2,
 };
 
-export default function AdminContent() {
-  const { deleteSubject } = useSubjectMutations();
-  const { documents, deleteDocument } = useAdminDemoStore();
-  const { subjects } = useSubjects();
+const SKELETON_ROWS = 5;
 
-  const handleDeleteDoc = (id) => {
-    deleteDocument(id);
-    toast.success("Document deleted");
-  };
+function TableSkeleton({ columns }) {
+  return (
+    <>
+      {Array.from({ length: SKELETON_ROWS }).map((_, rowIndex) => (
+        <TableRow key={rowIndex}>
+          {Array.from({ length: columns }).map((__, colIndex) => (
+            <TableCell key={colIndex}>
+              <Skeleton className="h-5 w-full rounded-md" />
+            </TableCell>
+          ))}
+        </TableRow>
+      ))}
+    </>
+  );
+}
+
+function EmptyRow({ colSpan, message }) {
+  return (
+    <TableRow>
+      <TableCell
+        colSpan={colSpan}
+        className="py-10 text-center text-sm text-muted-foreground"
+      >
+        {message}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+export default function AdminContent() {
+  const {
+    subjects,
+    isLoading: subjectsLoading,
+    error: subjectsError,
+  } = useAdminSubjects();
+  const {
+    content,
+    isLoading: contentLoading,
+    error: contentError,
+  } = useAdminContent();
+  const deleteSubjectMutation = useAdminDeleteSubject();
+  const deleteContentMutation = useAdminDeleteContent();
+
+  const deletingSubjectId = deleteSubjectMutation.isPending
+    ? deleteSubjectMutation.variables
+    : null;
+  const deletingContentId = deleteContentMutation.isPending
+    ? deleteContentMutation.variables
+    : null;
 
   const handleDeleteSubject = async (id) => {
-    const result = await deleteSubject(id);
-    if (result.ok) {
+    try {
+      await deleteSubjectMutation.mutateAsync(id);
       toast.success("Subject deleted");
-    } else {
-      toast.error(result.message || "Failed to delete subject");
+    } catch (error) {
+      toast.error(error.message || "Failed to delete subject");
+    }
+  };
+
+  const handleDeleteContent = async (id) => {
+    try {
+      await deleteContentMutation.mutateAsync(id);
+      toast.success("Document deleted");
+    } catch (error) {
+      toast.error(error.message || "Failed to delete document");
     }
   };
 
@@ -84,50 +140,66 @@ export default function AdminContent() {
           </TableHeader>
 
           <TableBody>
-            {subjects.map((s) => (
-              <TableRow key={s.id}>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="h-3 w-3 rounded-full"
-                      style={{ background: `hsl(${s.color})` }}
+            {subjectsLoading ? (
+              <TableSkeleton columns={5} />
+            ) : subjectsError ? (
+              <EmptyRow colSpan={5} message={subjectsError} />
+            ) : subjects.length === 0 ? (
+              <EmptyRow colSpan={5} message="No subjects found." />
+            ) : (
+              subjects.map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      {s.color ? (
+                        <div
+                          className="h-3 w-3 rounded-full shrink-0"
+                          style={{ background: `hsl(${s.color})` }}
+                        />
+                      ) : null}
+                      <span className="font-medium text-foreground">
+                        {s.name}
+                      </span>
+                    </div>
+                  </TableCell>
+
+                  <TableCell className="text-muted-foreground">
+                    {s.credits ?? "—"}
+                  </TableCell>
+
+                  <TableCell>
+                    {s.difficulty ? (
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          s.difficulty === "Hard"
+                            ? "bg-destructive/10 text-destructive"
+                            : s.difficulty === "Medium"
+                              ? "bg-warning/20 text-foreground"
+                              : "bg-accent/20 text-accent-foreground"
+                        }`}
+                      >
+                        {s.difficulty}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </TableCell>
+
+                  <TableCell className="text-muted-foreground">
+                    {formatAdminUserDate(s.examDate)}
+                  </TableCell>
+
+                  <TableCell className="text-right">
+                    <DeleteButton
+                      onConfirm={() => handleDeleteSubject(s.id)}
+                      label={s.name}
+                      isDeleting={deletingSubjectId === s.id}
+                      disabled={deleteSubjectMutation.isPending}
                     />
-                    <span className="font-medium text-foreground">
-                      {s.name}
-                    </span>
-                  </div>
-                </TableCell>
-
-                <TableCell className="text-muted-foreground">
-                  {s.credits}
-                </TableCell>
-
-                <TableCell>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                      s.difficulty === "Hard"
-                        ? "bg-destructive/10 text-destructive"
-                        : s.difficulty === "Medium"
-                          ? "bg-warning/20 text-foreground"
-                          : "bg-accent/20 text-accent-foreground"
-                    }`}
-                  >
-                    {s.difficulty}
-                  </span>
-                </TableCell>
-
-                <TableCell className="text-muted-foreground">
-                  {s.examDate}
-                </TableCell>
-
-                <TableCell className="text-right">
-                  <DeleteButton
-                    onConfirm={() => handleDeleteSubject(s.id)}
-                    label={s.name}
-                  />
-                </TableCell>
-              </TableRow>
-            ))}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </motion.div>
@@ -141,7 +213,7 @@ export default function AdminContent() {
       >
         <div className="p-4 border-b border-border/50">
           <h2 className="text-sm font-semibold text-foreground">
-            All Documents ({documents.length})
+            All Documents ({content.length})
           </h2>
         </div>
 
@@ -157,54 +229,64 @@ export default function AdminContent() {
           </TableHeader>
 
           <TableBody>
-            {documents.map((d) => {
-              const Icon = typeIcon[d.type] || FileText;
+            {contentLoading ? (
+              <TableSkeleton columns={5} />
+            ) : contentError ? (
+              <EmptyRow colSpan={5} message={contentError} />
+            ) : content.length === 0 ? (
+              <EmptyRow colSpan={5} message="No documents found." />
+            ) : (
+              content.map((d) => {
+                const Icon = typeIcon[d.type] || FileText;
 
-              return (
-                <TableRow key={d.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Icon
-                        className="h-4 w-4 text-muted-foreground"
-                        strokeWidth={1.5}
-                      />
-                      <span className="font-medium text-foreground">
-                        {d.title}
-                      </span>
-                    </div>
-                  </TableCell>
-
-                  <TableCell className="text-muted-foreground capitalize">
-                    {d.type}
-                  </TableCell>
-
-                  <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center">
-                        <span className="text-[10px] font-semibold text-primary">
-                          {d.ownerName?.charAt(0) || "?"}
+                return (
+                  <TableRow key={d.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Icon
+                          className="h-4 w-4 text-muted-foreground"
+                          strokeWidth={1.5}
+                        />
+                        <span className="font-medium text-foreground">
+                          {d.title}
                         </span>
                       </div>
+                    </TableCell>
 
-                      <p className="text-xs font-medium text-foreground">
-                        {d.ownerName || "Unknown"}
-                      </p>
-                    </div>
-                  </TableCell>
+                    <TableCell className="text-muted-foreground capitalize">
+                      {d.type}
+                    </TableCell>
 
-                  <TableCell className="text-muted-foreground text-xs">
-                    {d.createdAt || d.date}
-                  </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center">
+                          <span className="text-[10px] font-semibold text-primary">
+                            {d.ownerName?.charAt(0) || "?"}
+                          </span>
+                        </div>
 
-                  <TableCell className="text-right">
-                    <DeleteButton
-                      onConfirm={() => handleDeleteDoc(d.id)}
-                      label={d.title}
-                    />
-                  </TableCell>
-                </TableRow>
-              );
-            })}
+                        <p className="text-xs font-medium text-foreground">
+                          {d.ownerName || "Unknown"}
+                        </p>
+                      </div>
+                    </TableCell>
+
+                    <TableCell className="text-muted-foreground text-xs">
+                      {formatAdminUserDate(d.createdAt)}
+                    </TableCell>
+
+                    <TableCell className="text-right">
+                      <DeleteButton
+                        onConfirm={() => handleDeleteContent(d.id)}
+                        label={d.title}
+                        isDeleting={deletingContentId === d.id}
+                        disabled={deleteContentMutation.isPending}
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
           </TableBody>
         </Table>
       </motion.div>
@@ -212,12 +294,20 @@ export default function AdminContent() {
   );
 }
 
-function DeleteButton({ onConfirm, label }) {
+function DeleteButton({ onConfirm, label, isDeleting, disabled }) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <button className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors">
-          <Trash2 className="h-3 w-3" />
+        <button
+          type="button"
+          disabled={disabled}
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+        >
+          {isDeleting ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Trash2 className="h-3 w-3" />
+          )}
           Delete
         </button>
       </AlertDialogTrigger>
@@ -231,13 +321,23 @@ function DeleteButton({ onConfirm, label }) {
         </AlertDialogHeader>
 
         <AlertDialogFooter>
-          <AlertDialogCancel className="rounded-full">Cancel</AlertDialogCancel>
+          <AlertDialogCancel className="rounded-full" disabled={isDeleting}>
+            Cancel
+          </AlertDialogCancel>
 
           <AlertDialogAction
             onClick={onConfirm}
+            disabled={isDeleting}
             className="rounded-full bg-destructive text-destructive-foreground"
           >
-            Delete
+            {isDeleting ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                Deleting…
+              </>
+            ) : (
+              "Delete"
+            )}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

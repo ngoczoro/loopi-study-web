@@ -38,3 +38,25 @@ export function invalidateNotifications(queryClient) {
 export function invalidateAchievements(queryClient) {
   return queryClient.invalidateQueries({ queryKey: ["achievements"] });
 }
+
+/** @param {import('@tanstack/react-query').QueryClient} queryClient */
+export function invalidateAdminContentSubjects(queryClient) {
+  return queryClient.invalidateQueries({
+    queryKey: ["admin", "content-management", "subjects"],
+  });
+}
+
+/** @param {import('@tanstack/react-query').QueryClient} queryClient */
+export function invalidateAdminContentItems(queryClient) {
+  return queryClient.invalidateQueries({
+    queryKey: ["admin", "content-management", "items"],
+  });
+}
+
+/** @param {import('@tanstack/react-query').QueryClient} queryClient */
+export function invalidateAdminViolations(queryClient) {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["admin", "violations", "stats"] }),
+    queryClient.invalidateQueries({ queryKey: ["admin", "violations", "list"] }),
+  ]);
+}

@@ -38,4 +38,12 @@ export const queryKeys = {
   achievements: {
     badges: ["achievements", "badges"],
   },
+  adminContent: {
+    subjects: (params = {}) => ["admin", "content-management", "subjects", params],
+    items: (params = {}) => ["admin", "content-management", "items", params],
+  },
+  adminViolations: {
+    stats: (params = {}) => ["admin", "violations", "stats", params],
+    list: (params = {}) => ["admin", "violations", "list", params],
+  },
 };
