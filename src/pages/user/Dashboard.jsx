@@ -8,8 +8,8 @@ import loopyHappy from "../../assets/loopy-happy.png";
 import { Link } from "react-router-dom";
 import { useAppStore } from "../../lib/store";
 import { useAuthStore } from "../../lib/authStore";
-import { useFocusAnalyticsSummary } from "@/hooks/useFocusAnalytics";
 import { formatFocusHours } from "@/services/focusAnalyticsService";
+import { useProgressSummary } from "@/hooks/queries/progress";
 import {
   formatDueDate,
   getTodayCompletedCount,
@@ -42,11 +42,14 @@ export default function Dashboard() {
   const completed = getTodayCompletedCount(tasks, today);
   const pendingToday = todayTasks.length - completed;
 
-  const { data: focusSummary, isLoading: focusSummaryLoading } =
-    useFocusAnalyticsSummary();
-  const todayFocusLabel = focusSummaryLoading
+  const { data: progressSummary, isLoading: progressLoading } =
+    useProgressSummary();
+  const todayFocusLabel = progressLoading
     ? "…"
-    : `${formatFocusHours(focusSummary?.todayFocusSeconds)} hrs`;
+    : `${formatFocusHours(progressSummary?.focus?.todayFocusSeconds)} hrs`;
+  const streakLabel = progressLoading
+    ? "…"
+    : `${progressSummary?.streak?.currentStreak ?? 0} days`;
 
   useEffect(() => {
     if (!accessToken) return;
@@ -117,7 +120,7 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { icon: Flame, label: "Streak", value: "7 days", color: "text-orange-500" },
+          { icon: Flame, label: "Streak", value: streakLabel, color: "text-orange-500" },
           { icon: Clock, label: "Today", value: todayFocusLabel, color: "text-blue-500" },
           {
             icon: CheckCircle2,

@@ -19,6 +19,11 @@ export const queryKeys = {
       planner: (params = {}) => ["focus", "analytics", "planner", params],
     },
   },
+  progress: {
+    summary: ["progress", "summary"],
+    streaks: ["progress", "streaks"],
+    milestones: ["progress", "milestones"],
+  },
   notes: {
     all: ["notes"],
   },
@@ -26,5 +31,11 @@ export const queryKeys = {
     profile: ["user", "profile"],
     blockedSlots: ["user", "blocked-slots"],
     preferences: ["user", "preferences"],
+  },
+  notifications: {
+    all: ["notifications"],
+  },
+  achievements: {
+    badges: ["achievements", "badges"],
   },
 };

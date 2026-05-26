@@ -13,6 +13,7 @@ import {
   useFocusActiveQuery,
   useInvalidateFocus,
 } from "@/hooks/queries/focus";
+import { useInvalidateProgress } from "@/hooks/queries/progress";
 import { queryKeys } from "@/lib/query/queryKeys";
 import {
   computeSecondsLeft,
@@ -41,6 +42,7 @@ const FocusSessionContext = createContext(null);
 export function FocusSessionProvider({ children }) {
   const queryClient = useQueryClient();
   const invalidateFocus = useInvalidateFocus();
+  const invalidateProgress = useInvalidateProgress();
   const {
     activeSession: serverActive,
     isLoading: activeLoading,
@@ -159,11 +161,19 @@ export function FocusSessionProvider({ children }) {
           ? `Focus session complete! (${session.subjectName})`
           : "Focus session complete!",
       );
+      await invalidateProgress();
       clearLiveSession();
     } else {
       toast.error(result.message);
     }
-  }, [sessionId, session?.subjectName, workElapsedSeconds, workMinutes, clearLiveSession]);
+  }, [
+    sessionId,
+    session?.subjectName,
+    workElapsedSeconds,
+    workMinutes,
+    invalidateProgress,
+    clearLiveSession,
+  ]);
 
   const finishAbandon = useCallback(async () => {
     if (!sessionId) return;

@@ -26,3 +26,15 @@ export function invalidateNotes(queryClient) {
 export function invalidateSubjects(queryClient) {
   return queryClient.invalidateQueries({ queryKey: queryKeys.subjects.all });
 }
+
+/** @param {import('@tanstack/react-query').QueryClient} queryClient */
+export function invalidateNotifications(queryClient) {
+  return queryClient.invalidateQueries({
+    queryKey: queryKeys.notifications.all,
+  });
+}
+
+/** @param {import('@tanstack/react-query').QueryClient} queryClient */
+export function invalidateAchievements(queryClient) {
+  return queryClient.invalidateQueries({ queryKey: ["achievements"] });
+}

@@ -31,7 +31,7 @@ import {
 } from "@/services/plannerService";
 import { toast } from "sonner";
 
-const hours = Array.from({ length: 12 }, (_, i) => i + 8);
+const hours = Array.from({ length: 24 }, (_, i) => i);
 const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function parseICS(text) {
@@ -603,6 +603,7 @@ export default function Planner() {
           ))}
         </div>
 
+        <div className="max-h-[600px] overflow-y-auto">
         <div className="grid grid-cols-[60px_repeat(7,1fr)] relative">
           {hours.map((hour) => (
             <div key={hour} className="contents">
@@ -710,6 +711,7 @@ export default function Planner() {
               })}
             </div>
           ))}
+        </div>
         </div>
       </div>
 
