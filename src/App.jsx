@@ -14,6 +14,7 @@ import Notifications from "./pages/user/Notifications";
 import Goals from "./pages/user/Goals";
 import AdminLayout from "./components/AdminLayout";
 import AdminContent from "./pages/admin/AdminContent";
+import AdminContentPreview from "./pages/admin/AdminContentPreview";
 import AdminWarnings from "./pages/admin/AdminWarnings";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminUsers from "./pages/admin/AdminUsers";
@@ -55,6 +56,7 @@ function App() {
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/users" element={<AdminUsers />} />
           <Route path="/admin/content" element={<AdminContent />} />
+          <Route path="/admin/content/:id" element={<AdminContentPreview />} />
           <Route path="/admin/warnings" element={<AdminWarnings />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
