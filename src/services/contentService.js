@@ -1,5 +1,6 @@
 import api from "./api";
 import { normalizeSubjectId } from "../lib/content-utils.js";
+import { getApiErrorMessage } from "../lib/apiErrorUtils.js";
 
 const handleResponse = (response) => ({
   ok: true,
@@ -9,7 +10,7 @@ const handleResponse = (response) => ({
 
 const handleError = (error, fallback) => ({
   ok: false,
-  message: error.response?.data?.message || fallback,
+  message: getApiErrorMessage(error, fallback),
   error: error.response?.data,
 });
 

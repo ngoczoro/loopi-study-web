@@ -63,36 +63,45 @@ export default function TodayTasks() {
 
   const handleAdd = async () => {
     const trimmed = title.trim();
-    if (!trimmed) return;
+    if (!trimmed || submitting) return;
 
     setSubmitting(true);
-    const result = await createTask({
-      title: trimmed,
-      subjectId: normalizeTaskSubjectId(subjectId),
-      priority,
-      dueDate: today,
-    });
-    setSubmitting(false);
+    try {
+      const result = await createTask({
+        title: trimmed,
+        subjectId: normalizeTaskSubjectId(subjectId),
+        priority,
+        dueDate: today,
+      });
 
-    if (result.ok) {
-      setTitle("");
-      toast.success("Task added!");
-      return;
+      if (result.ok) {
+        setTitle("");
+        toast.success("Task added!");
+        return;
+      }
+
+      toast.error(result.message || "Failed to add task");
+    } finally {
+      setSubmitting(false);
     }
-
-    toast.error(result.message || "Failed to add task");
   };
 
   const handleToggle = async (id, wasDone) => {
-    setTogglingId(id);
-    const result = await toggleTaskComplete(id);
-    setTogglingId(null);
+    if (togglingId) return;
 
-    if (result.ok) {
-      if (!wasDone) toast.success("Task completed 🎉");
-      return;
+    setTogglingId(id);
+    try {
+      const result = await toggleTaskComplete(id);
+
+      if (result.ok) {
+        if (!wasDone) toast.success("Task completed 🎉");
+        return;
+      }
+
+      toast.error(result.message || "Failed to update task");
+    } finally {
+      setTogglingId(null);
     }
-    toast.error(result.message || "Failed to update task");
   };
 
   const handleDelete = async (id) => {
@@ -118,26 +127,30 @@ export default function TodayTasks() {
     const trimmed = titleDraft.trim();
     setEditingTitleId(null);
 
-    if (!trimmed || trimmed === task.title) return;
+    if (!trimmed || trimmed === task.title || savingTitleId) return;
 
     setSavingTitleId(task.id);
-    const result = await updateTask(task.id, { title: trimmed });
-    setSavingTitleId(null);
-
-    if (!result.ok) {
-      toast.error(result.message || "Failed to update task");
+    try {
+      const result = await updateTask(task.id, { title: trimmed });
+      if (!result.ok) {
+        toast.error(result.message || "Failed to update task");
+      }
+    } finally {
+      setSavingTitleId(null);
     }
   };
 
   const handlePriorityChange = async (task, nextPriority) => {
-    if (nextPriority === task.priority) return;
+    if (nextPriority === task.priority || savingPriorityId) return;
 
     setSavingPriorityId(task.id);
-    const result = await updateTask(task.id, { priority: nextPriority });
-    setSavingPriorityId(null);
-
-    if (!result.ok) {
-      toast.error(result.message || "Failed to update priority");
+    try {
+      const result = await updateTask(task.id, { priority: nextPriority });
+      if (!result.ok) {
+        toast.error(result.message || "Failed to update priority");
+      }
+    } finally {
+      setSavingPriorityId(null);
     }
   };
 
@@ -304,7 +317,7 @@ function TaskRow({
     >
       <button
         onClick={() => onToggle(task.id, task.completed)}
-        disabled={togglingId === task.id}
+        disabled={Boolean(togglingId)}
         className={`h-5 w-5 rounded-md border-2 flex items-center justify-center transition-colors shrink-0 ${
           task.completed
             ? "bg-accent border-accent"

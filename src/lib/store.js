@@ -32,6 +32,7 @@ import {
   mapContentItemForUI,
   mapContentListForUI,
 } from "./content-utils";
+import { getApiErrorMessage } from "./apiErrorUtils.js";
 import {
   getTasks,
   getTaskSummary,
@@ -380,35 +381,45 @@ export const useAppStore = create((set, get) => ({
 
   fetchContent: async () => {
     set({ contentLoading: true, contentError: null });
-    const result = await getContent();
-    if (result.ok) {
-      get().setContentState(result.data);
-      set({ contentLoading: false, contentError: null });
-      return { ok: true, data: result.data };
+    try {
+      const result = await getContent();
+      if (result.ok) {
+        get().setContentState(result.data);
+        set({ contentLoading: false, contentError: null });
+        return { ok: true, data: result.data };
+      }
+      set({ contentLoading: false, contentError: result.message });
+      return { ok: false, message: result.message };
+    } catch (error) {
+      set({ contentLoading: false, contentError: getApiErrorMessage(error, "Failed to fetch content") });
+      return { ok: false, message: getApiErrorMessage(error, "Failed to fetch content") };
     }
-    set({ contentLoading: false, contentError: result.message });
-    return { ok: false, message: result.message };
   },
 
   fetchContentBySubject: async (subjectId) => {
     set({ contentLoading: true, contentError: null });
-    const result = await getContentBySubject(subjectId);
-    if (result.ok) {
-      const mapped = mapContentListForUI(result.data);
-      set((state) => {
-        const other = state.content.filter((item) => item.subjectId !== subjectId);
-        const merged = [...mapped, ...other];
-        return {
-          content: merged,
-          documents: merged,
-          contentLoading: false,
-          contentError: null,
-        };
-      });
-      return { ok: true, data: result.data };
-    }
+    try {
+      const result = await getContentBySubject(subjectId);
+      if (result.ok) {
+        const mapped = mapContentListForUI(result.data);
+        set((state) => {
+          const other = state.content.filter((item) => item.subjectId !== subjectId);
+          const merged = [...mapped, ...other];
+          return {
+            content: merged,
+            documents: merged,
+            contentLoading: false,
+            contentError: null,
+          };
+        });
+        return { ok: true, data: result.data };
+      }
 
-    return get().fetchContent();
+      return get().fetchContent();
+    } catch (error) {
+      set({ contentLoading: false, contentError: getApiErrorMessage(error, "Failed to fetch subject content") });
+      return { ok: false, message: getApiErrorMessage(error, "Failed to fetch subject content") };
+    }
   },
 
   createContentNote: async (payload) => {
@@ -439,16 +450,24 @@ export const useAppStore = create((set, get) => ({
 
   uploadContentFile: async (formData) => {
     set({ contentUploading: true, contentError: null });
-    const result = await uploadFileAPI(formData);
-    if (result.ok) {
-      const item = mapContentItemForUI(result.data);
-      get().upsertContentInState(item);
-      await get().fetchContent();
-      set({ contentUploading: false, contentError: null });
-      return { ok: true, data: item };
+    try {
+      const result = await uploadFileAPI(formData);
+      if (result.ok) {
+        const item = mapContentItemForUI(result.data);
+        get().upsertContentInState(item);
+        await get().fetchContent();
+        set({ contentError: null });
+        return { ok: true, data: item };
+      }
+      set({ contentError: result.message });
+      return { ok: false, message: result.message };
+    } catch (error) {
+      const message = getApiErrorMessage(error, "Failed to upload file");
+      set({ contentError: message });
+      return { ok: false, message };
+    } finally {
+      set({ contentUploading: false });
     }
-    set({ contentUploading: false, contentError: result.message });
-    return { ok: false, message: result.message };
   },
 
   updateContentItem: async (id, payload, replacementFile = null) => {
@@ -456,18 +475,26 @@ export const useAppStore = create((set, get) => ({
     if (replacementFile) {
       set({ contentUploading: true });
     }
-    const result = await updateContentAPI(id, payload, replacementFile);
-    if (replacementFile) {
-      set({ contentUploading: false });
+
+    try {
+      const result = await updateContentAPI(id, payload, replacementFile);
+      if (result.ok) {
+        const item = mapContentItemForUI(result.data);
+        get().upsertContentInState(item);
+        await get().fetchContent();
+        return { ok: true, data: item };
+      }
+      set({ contentError: result.message });
+      return { ok: false, message: result.message };
+    } catch (error) {
+      const message = getApiErrorMessage(error, "Failed to update content");
+      set({ contentError: message });
+      return { ok: false, message };
+    } finally {
+      if (replacementFile) {
+        set({ contentUploading: false });
+      }
     }
-    if (result.ok) {
-      const item = mapContentItemForUI(result.data);
-      get().upsertContentInState(item);
-      await get().fetchContent();
-      return { ok: true, data: item };
-    }
-    set({ contentError: result.message });
-    return { ok: false, message: result.message };
   },
 
   deleteContentItem: async (id) => {
@@ -614,42 +641,54 @@ export const useAppStore = create((set, get) => ({
     const query = { ...get().lastTaskQuery, ...params };
     set({ tasksLoading: true, tasksError: null, lastTaskQuery: query });
 
-    const result = await getTasks(query);
-    if (result.success) {
-      set({
-        tasks: result.data ?? [],
-        tasksPagination: result.pagination,
-        tasksLoading: false,
-        tasksError: null,
-      });
-      return { ok: true, data: result.data, pagination: result.pagination };
-    }
+    try {
+      const result = await getTasks(query);
+      if (result.success) {
+        set({
+          tasks: result.data ?? [],
+          tasksPagination: result.pagination,
+          tasksLoading: false,
+          tasksError: null,
+        });
+        return { ok: true, data: result.data, pagination: result.pagination };
+      }
 
-    set({
-      tasksLoading: false,
-      tasksError: result.message,
-    });
-    return { ok: false, message: result.message };
+      set({
+        tasksLoading: false,
+        tasksError: result.message,
+      });
+      return { ok: false, message: result.message };
+    } catch (error) {
+      const message = getApiErrorMessage(error, "Failed to fetch tasks");
+      set({ tasksLoading: false, tasksError: message });
+      return { ok: false, message };
+    }
   },
 
   fetchTaskSummary: async (params = {}) => {
     set({ taskSummaryLoading: true, taskSummaryError: null });
-    const result = await getTaskSummary(params);
+    try {
+      const result = await getTaskSummary(params);
 
-    if (result.success) {
+      if (result.success) {
+        set({
+          taskSummary: result.data,
+          taskSummaryLoading: false,
+          taskSummaryError: null,
+        });
+        return { ok: true, data: result.data };
+      }
+
       set({
-        taskSummary: result.data,
         taskSummaryLoading: false,
-        taskSummaryError: null,
+        taskSummaryError: result.message,
       });
-      return { ok: true, data: result.data };
+      return { ok: false, message: result.message };
+    } catch (error) {
+      const message = getApiErrorMessage(error, "Failed to fetch task summary");
+      set({ taskSummaryLoading: false, taskSummaryError: message });
+      return { ok: false, message };
     }
-
-    set({
-      taskSummaryLoading: false,
-      taskSummaryError: result.message,
-    });
-    return { ok: false, message: result.message };
   },
 
   refreshTasksAndSummary: async () => {

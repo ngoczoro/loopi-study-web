@@ -1,4 +1,5 @@
 import api from "./api";
+import { getApiErrorMessage } from "../lib/apiErrorUtils.js";
 
 const handleSuccess = (response) => ({
   success: true,
@@ -9,7 +10,7 @@ const handleSuccess = (response) => ({
 
 const handleError = (error, fallback) => ({
   success: false,
-  message: error.response?.data?.message || fallback,
+  message: getApiErrorMessage(error, fallback),
   error: error.response?.data,
 });
 
