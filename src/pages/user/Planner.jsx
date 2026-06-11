@@ -7,8 +7,6 @@ import {
   Upload,
   X,
   Sparkles,
-  Loader2,
-  Check,
   Play,
   Trash2,
   MoreVertical,
@@ -23,7 +21,7 @@ import { usePlannerWeek, usePlannerWeekCache } from "@/hooks/usePlannerWeek";
 import { useBlockedSlotsQuery } from "@/hooks/queries/user";
 import { getWeekStartDate } from "@/lib/plannerWeek";
 import { invalidatePlannerWeek } from "@/lib/query/invalidate";
-import { generateMockStudyPlan } from "@/lib/ai-utils";
+import AiPlanWizard from "@/components/ai-plan/AiPlanWizard";
 import {
   createPlannerSession,
   deletePlannerSession,
@@ -68,7 +66,7 @@ function parseICS(text) {
 }
 
 export default function Planner() {
-  const { subjects } = useSubjects();
+  const { subjects, fetchSubjects } = useSubjects();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -145,8 +143,6 @@ export default function Planner() {
   const [activeMenuId, setActiveMenuId] = useState(null);
 
   const [showAiPlan, setShowAiPlan] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiPlan, setAiPlan] = useState(null);
 
   const [addForm, setAddForm] = useState({
     title: "",
@@ -474,50 +470,6 @@ export default function Planner() {
     };
     reader.readAsText(file);
     if (fileRef.current) fileRef.current.value = "";
-  };
-
-  const handleGenerateAiPlan = () => {
-    if (subjects.length === 0) {
-      toast.error("Add subjects first to generate a plan");
-      return;
-    }
-    setAiLoading(true);
-    setTimeout(() => {
-      const plan = generateMockStudyPlan(subjects);
-      setAiPlan(plan);
-      setAiLoading(false);
-    }, 1200);
-  };
-
-  const handleAcceptPlan = async () => {
-    if (!aiPlan) return;
-
-    let created = 0;
-    for (const item of aiPlan) {
-      const subject = subjects.find((s) => item.title.startsWith(s.name));
-      const result = await createPlannerSession(
-        {
-          title: item.title,
-          subjectId: subject?.id ?? null,
-          day: item.day,
-          start: item.start,
-          duration: item.duration,
-          color: item.color,
-          source: "ai_plan",
-        },
-        weekStartDate,
-      );
-      if (result.success) created += 1;
-    }
-
-    if (created > 0) {
-      toast.success(`Study plan saved! ${created} sessions added 📅`);
-      setAiPlan(null);
-      setShowAiPlan(false);
-      reloadWeek();
-    } else {
-      toast.error("Could not save AI plan sessions");
-    }
   };
 
   if (loading) {
@@ -873,139 +825,16 @@ export default function Planner() {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {showAiPlan && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div
-              className="absolute inset-0 bg-foreground/20 backdrop-blur-sm"
-              onClick={() => {
-                setShowAiPlan(false);
-                setAiPlan(null);
-              }}
-            />
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="relative bg-card rounded-2xl p-6 shadow-soft-lg w-full max-w-lg z-10 max-h-[85vh] overflow-auto border border-border"
-            >
-              <button
-                onClick={() => {
-                  setShowAiPlan(false);
-                  setAiPlan(null);
-                }}
-                className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <Sparkles className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-display font-semibold text-foreground">
-                    Generate AI Study Plan
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    Based on your subjects, hours, and priorities
-                  </p>
-                </div>
-              </div>
-              {!aiPlan ? (
-                <div className="space-y-3">
-                  <div className="bg-secondary/40 rounded-xl p-3 space-y-1">
-                    <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">
-                      Your Subjects
-                    </p>
-                    {subjects.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">
-                        No subjects added yet
-                      </p>
-                    ) : (
-                      subjects.map((s) => (
-                        <div
-                          key={s.id}
-                          className="flex items-center justify-between text-xs"
-                        >
-                          <span className="text-foreground font-medium">
-                            {s.name}
-                          </span>
-                          <span className="text-muted-foreground">
-                            {s.requiredHoursPerWeek || s.credits}h/week ·{" "}
-                            {s.priority || "medium"} priority
-                          </span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  <button
-                    onClick={handleGenerateAiPlan}
-                    disabled={aiLoading || subjects.length === 0}
-                    className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {aiLoading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" /> Generating
-                        Plan...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4" /> Generate Plan
-                      </>
-                    )}
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <p className="text-xs text-muted-foreground font-medium">
-                    {aiPlan.length} sessions generated
-                  </p>
-                  <div className="space-y-1.5 max-h-60 overflow-auto">
-                    {aiPlan.map((s, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-3 bg-secondary/40 rounded-xl p-3"
-                      >
-                        <div
-                          className="h-3 w-3 rounded-full"
-                          style={{ backgroundColor: `hsl(${s.color})` }}
-                        />
-                        <div className="flex-1">
-                          <p className="text-xs font-medium text-foreground">
-                            {s.title}
-                          </p>
-                          <p className="text-[11px] text-muted-foreground">
-                            {days[s.day]} · {Math.floor(s.start)}:
-                            {(s.start % 1) * 60 === 0 ? "00" : "30"} ·{" "}
-                            {s.duration}h
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        setAiPlan(null);
-                        handleGenerateAiPlan();
-                      }}
-                      className="flex-1 h-10 rounded-full bg-secondary text-secondary-foreground font-medium text-sm hover:bg-secondary/80"
-                    >
-                      Regenerate
-                    </button>
-                    <button
-                      onClick={handleAcceptPlan}
-                      className="flex-1 h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform flex items-center justify-center gap-2"
-                    >
-                      <Check className="h-4 w-4" /> Accept Plan
-                    </button>
-                  </div>
-                </div>
-              )}
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <AiPlanWizard
+        open={showAiPlan}
+        onClose={() => setShowAiPlan(false)}
+        subjects={subjects}
+        onSubjectsChange={fetchSubjects}
+        onApplied={() => {
+          queryClient.invalidateQueries({ queryKey: ["planner"] });
+          refetchSessions();
+        }}
+      />
     </div>
   );
 }

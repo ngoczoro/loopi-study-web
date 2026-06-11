@@ -28,6 +28,8 @@ import { Calendar as CalendarPicker } from "@/components/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/popover";
 import { toast } from "sonner";
 import { generateMockQuiz, moderateContent } from "@/lib/ai-utils";
+import AiPlanWizard from "@/components/ai-plan/AiPlanWizard";
+import { AI_PLAN_MODES } from "@/lib/study-plan/types";
 import {
   isValidUrl,
   normalizeSubjectId,
@@ -139,6 +141,8 @@ export default function Subjects() {
   const [aiPreview, setAiPreview] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingSubjectId, setEditingSubjectId] = useState(null);
+  const [showAiPlanWizard, setShowAiPlanWizard] = useState(false);
+  const [aiPlanContext, setAiPlanContext] = useState(null);
 
   const accessToken = useAuthStore((s) => s.accessToken);
 
@@ -828,6 +832,25 @@ export default function Subjects() {
                                       </p>
                                     </div>
                                     <div className="flex items-center gap-0.5 opacity-0 group-hover/doc:opacity-100 transition-opacity">
+                                      {doc.type === "file" && (
+                                        <button
+                                          onClick={() => {
+                                            setAiPlanContext({
+                                              mode: AI_PLAN_MODES.DOCUMENT,
+                                              documentId: doc.id,
+                                              subjectId: doc.subjectId || selectedSubject?.id || null,
+                                            });
+                                            setShowAiPlanWizard(true);
+                                          }}
+                                          className="h-7 w-7 rounded-md hover:bg-primary/10 flex items-center justify-center text-muted-foreground hover:text-primary"
+                                          title="AI Plan"
+                                        >
+                                          <Sparkles
+                                            className="h-3.5 w-3.5"
+                                            strokeWidth={1.5}
+                                          />
+                                        </button>
+                                      )}
                                       <button
                                         onClick={() => setViewDoc(doc)}
                                         className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
@@ -1679,6 +1702,21 @@ export default function Subjects() {
           </div>
         )}
       </AnimatePresence>
+
+      <AiPlanWizard
+        open={showAiPlanWizard}
+        onClose={() => {
+          setShowAiPlanWizard(false);
+          setAiPlanContext(null);
+        }}
+        initialContext={aiPlanContext}
+        subjects={subjects}
+        onSubjectsChange={fetchSubjects}
+        onApplied={() => {
+          fetchSubjects();
+          fetchContent();
+        }}
+      />
     </div>
   );
 }
