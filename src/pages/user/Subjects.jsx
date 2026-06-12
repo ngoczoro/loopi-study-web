@@ -28,6 +28,7 @@ import { Calendar as CalendarPicker } from "@/components/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/popover";
 import { toast } from "sonner";
 import { generateMockQuiz, moderateContent } from "@/lib/ai-utils";
+import AIDocumentSummary from "@/components/ai/AIDocumentSummary";
 import AiPlanWizard from "@/components/ai-plan/AiPlanWizard";
 import { AI_PLAN_MODES } from "@/lib/study-plan/types";
 import {
@@ -1072,6 +1073,13 @@ export default function Subjects() {
                   </div>
                 )}
               </div>
+
+              <AIDocumentSummary
+                documentId={viewDoc.id}
+                documentTitle={viewDoc.title}
+                document={viewDoc}
+              />
+
               <div className="flex gap-2 mt-4">
                 <button
                   onClick={() => {

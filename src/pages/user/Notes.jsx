@@ -19,10 +19,10 @@ import { useAppStore } from "@/lib/store";
 import { useAuthStore } from "@/lib/authStore";
 import { toast } from "sonner";
 import {
-  generateMockSummary,
   generateMockQuiz,
   suggestMaterials,
 } from "@/lib/ai-utils";
+import AIDocumentSummary from "@/components/ai/AIDocumentSummary";
 import {
   isValidUrl,
   normalizeSubjectId,
@@ -276,22 +276,6 @@ export default function Notes() {
 
     closeEditModal();
     toast.success("Content updated successfully");
-  };
-
-  const handleSummarize = (doc) => {
-    setAiLoading("summarize");
-
-    setTimeout(async () => {
-      const summary = generateMockSummary(doc.title, doc.content);
-      await createContentNote({
-        title: `Summary: ${doc.title}`,
-        content: summary,
-        subjectId: doc.subjectId || null,
-      });
-      setAiLoading(null);
-      setViewDoc(null);
-      toast.success("Summary note created");
-    }, 1000);
   };
 
   const handleGenerateQuizFromDoc = (doc) => {
@@ -566,23 +550,17 @@ export default function Notes() {
                 )}
               </div>
 
+              <AIDocumentSummary
+                documentId={viewDoc.id}
+                documentTitle={viewDoc.title}
+                document={viewDoc}
+              />
+
               <div className="mt-4 pt-3 border-t border-border/50">
                 <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-2">
                   AI Actions
                 </p>
                 <div className="flex gap-2 flex-wrap">
-                  <button
-                    onClick={() => handleSummarize(viewDoc)}
-                    disabled={!!aiLoading}
-                    className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors disabled:opacity-50"
-                  >
-                    {aiLoading === "summarize" ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Sparkles className="h-3.5 w-3.5" />
-                    )}{" "}
-                    Summarize
-                  </button>
                   <button
                     onClick={() => handleGenerateQuizFromDoc(viewDoc)}
                     disabled={!!aiLoading}
