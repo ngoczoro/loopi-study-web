@@ -216,3 +216,159 @@ export const mapGeneratedQuizForStore = (data, overrides = {}) => ({
     data.sourceDocumentTitle ?? overrides.sourceDocumentTitle ?? null,
   createdAt: data.createdAt ?? new Date().toISOString(),
 });
+
+const RESOURCE_FALLBACK =
+  "Không thể tìm nguồn học lúc này. Vui lòng thử lại.";
+
+const normalizeOptionalSubjectId = (subjectId) => {
+  if (subjectId == null || subjectId === "") {
+    return undefined;
+  }
+
+  if (typeof subjectId === "object") {
+    return undefined;
+  }
+
+  const value = String(subjectId).trim();
+  return value || undefined;
+};
+
+const buildSaveLearningResourcePayload = (payload = {}) => {
+  const { subjectId, ...rest } = payload;
+  const normalizedSubjectId = normalizeOptionalSubjectId(subjectId);
+
+  return {
+    ...rest,
+    ...(normalizedSubjectId ? { subjectId: normalizedSubjectId } : {}),
+  };
+};
+
+export const getResourceRecommendations = async ({
+  q,
+  limit = 5,
+  subjectId = null,
+} = {}) => {
+  try {
+    const response = await api.get("/ai/resource-recommendations", {
+      params: {
+        q,
+        limit,
+        ...(subjectId ? { subjectId } : {}),
+      },
+    });
+    return {
+      success: true,
+      data: response.data.data,
+      message: response.data.message,
+    };
+  } catch (error) {
+    console.error("Error fetching resource recommendations:", error);
+    return handleError(error, RESOURCE_FALLBACK);
+  }
+};
+
+export const regenerateResourceRecommendations = async ({
+  q,
+  limit = 5,
+  subjectId = null,
+} = {}) => {
+  try {
+    const response = await api.post("/ai/resource-recommendations/regenerate", {
+      q,
+      limit,
+      ...(subjectId ? { subjectId } : {}),
+    });
+    return {
+      success: true,
+      data: response.data.data,
+      message: response.data.message,
+    };
+  } catch (error) {
+    console.error("Error regenerating resource recommendations:", error);
+    return handleError(error, RESOURCE_FALLBACK);
+  }
+};
+
+export const getResourceRecommendationHistory = async ({
+  limit = 5,
+  subjectId = null,
+} = {}) => {
+  try {
+    const response = await api.get("/ai/resource-recommendations/history", {
+      params: {
+        limit,
+        ...(subjectId ? { subjectId } : {}),
+      },
+    });
+    return {
+      success: true,
+      data: response.data.data,
+      message: response.data.message,
+    };
+  } catch (error) {
+    console.error("Error fetching recommendation history:", error);
+    return handleError(error, "Failed to fetch recommendation history");
+  }
+};
+
+export const getResourceRecommendationHistoryById = async (id) => {
+  try {
+    const response = await api.get(
+      `/ai/resource-recommendations/history/${id}`,
+    );
+    return {
+      success: true,
+      data: response.data.data,
+      message: response.data.message,
+    };
+  } catch (error) {
+    console.error("Error fetching recommendation history detail:", error);
+    return handleError(error, "Failed to fetch recommendation history");
+  }
+};
+
+export const saveLearningResource = async (payload) => {
+  try {
+    const response = await api.post(
+      "/ai/saved-learning-resources",
+      buildSaveLearningResourcePayload(payload),
+    );
+    return {
+      success: true,
+      data: response.data.data,
+      message: response.data.message,
+    };
+  } catch (error) {
+    console.error("Error saving learning resource:", error);
+    return handleError(error, "Failed to save learning resource");
+  }
+};
+
+export const getSavedLearningResources = async ({ subjectId = null } = {}) => {
+  try {
+    const response = await api.get("/ai/saved-learning-resources", {
+      params: subjectId ? { subjectId } : {},
+    });
+    return {
+      success: true,
+      data: response.data.data,
+      message: response.data.message,
+    };
+  } catch (error) {
+    console.error("Error fetching saved learning resources:", error);
+    return handleError(error, "Failed to fetch saved learning resources");
+  }
+};
+
+export const deleteSavedLearningResource = async (id) => {
+  try {
+    const response = await api.delete(`/ai/saved-learning-resources/${id}`);
+    return {
+      success: true,
+      message: response.data.message,
+    };
+  } catch (error) {
+    console.error("Error deleting saved learning resource:", error);
+    return handleError(error, "Failed to delete saved learning resource");
+  }
+};

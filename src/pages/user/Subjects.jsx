@@ -17,6 +17,7 @@ import {
   Sparkles,
   Loader2,
   Brain,
+  Globe,
 } from "lucide-react";
 import { format, addDays, startOfDay } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
@@ -30,8 +31,10 @@ import { toast } from "sonner";
 import { moderateContent } from "@/lib/ai-utils";
 import {
   generateSubjectQuiz,
+  getSavedLearningResources,
   mapGeneratedQuizForStore,
 } from "@/services/aiService";
+import AILearningResourcesPanel from "@/components/ai/AILearningResourcesPanel";
 import AIDocumentSummary from "@/components/ai/AIDocumentSummary";
 import AIQuizGenerator from "@/components/ai/AIQuizGenerator";
 import AiPlanWizard from "@/components/ai-plan/AiPlanWizard";
@@ -154,6 +157,8 @@ export default function Subjects() {
   const [editingSubjectId, setEditingSubjectId] = useState(null);
   const [showAiPlanWizard, setShowAiPlanWizard] = useState(false);
   const [aiPlanContext, setAiPlanContext] = useState(null);
+  const [savedLearningResourceCount, setSavedLearningResourceCount] =
+    useState(0);
 
   const accessToken = useAuthStore((s) => s.accessToken);
 
@@ -586,6 +591,29 @@ export default function Subjects() {
   const isEditBusy =
     isSubmitting || (editDoc?.type === "file" && contentUploading);
 
+  useEffect(() => {
+    if (!selectedSubject?.id) {
+      setSavedLearningResourceCount(0);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      const result = await getSavedLearningResources({
+        subjectId: selectedSubject.id,
+      });
+
+      if (!cancelled && result.success) {
+        setSavedLearningResourceCount((result.data ?? []).length);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSubject?.id]);
+
   return (
     <div className="max-w-5xl mx-auto space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -872,7 +900,10 @@ export default function Subjects() {
                                             setAiPlanContext({
                                               mode: AI_PLAN_MODES.DOCUMENT,
                                               documentId: doc.id,
-                                              subjectId: doc.subjectId || selectedSubject?.id || null,
+                                              subjectId:
+                                                doc.subjectId ||
+                                                selectedSubject?.id ||
+                                                null,
                                             });
                                             setShowAiPlanWizard(true);
                                           }}
@@ -1002,6 +1033,36 @@ export default function Subjects() {
                             </div>
                           </div>
                         )}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+
+                  <AccordionItem
+                    value="learning-resources"
+                    className="border-none"
+                  >
+                    <AccordionTrigger className="py-3 px-4 rounded-xl bg-secondary/30 hover:bg-secondary/50 hover:no-underline transition-colors data-[state=open]:rounded-b-none">
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                          <Globe
+                            className="h-3.5 w-3.5 text-primary"
+                            strokeWidth={1.5}
+                          />
+                        </div>
+                        <span className="text-sm font-semibold text-foreground">
+                          Learning Resources
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          ({savedLearningResourceCount} saved)
+                        </span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="pb-0">
+                      <div className="px-4 pb-4 pt-1 bg-secondary/30 rounded-b-xl">
+                        <AILearningResourcesPanel
+                          subjectId={selectedSubject.id}
+                          subjectName={selectedSubject.name}
+                        />
                       </div>
                     </AccordionContent>
                   </AccordionItem>

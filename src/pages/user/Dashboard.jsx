@@ -1,6 +1,13 @@
 import { useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Flame, Clock, CheckCircle2, BookOpen, Timer, ArrowDown } from "lucide-react";
+import {
+  Flame,
+  Clock,
+  CheckCircle2,
+  BookOpen,
+  Timer,
+  ArrowDown,
+} from "lucide-react";
 import WeeklyTimeline from "../../components/WeeklyTimeline";
 import TodayTasks from "../../components/TodayTasks";
 import { TaskSummaryCards } from "../../components/TaskSummaryCards";
@@ -21,6 +28,7 @@ import {
   WidgetScrollArea,
   DEADLINE_LIST_SCROLL_MAX,
 } from "../../components/WidgetScrollArea";
+import AILearningResourcesPanel from "../../components/ai/AILearningResourcesPanel";
 
 export default function Dashboard() {
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -81,7 +89,7 @@ export default function Dashboard() {
         <div className="flex flex-col md:flex-row items-center gap-6">
           <div className="flex-1 space-y-2">
             <h1 className="text-3xl md:text-4xl font-display font-bold tracking-tight text-foreground">
-              Ready for a cozy study session? 📚
+              Ready for a cozy study session?
             </h1>
             <p className="text-muted-foreground text-[15px] leading-relaxed">
               Loopy is cheering for you! You have{" "}
@@ -102,7 +110,8 @@ export default function Dashboard() {
                 onClick={scrollToTodayTasks}
                 className="inline-flex items-center gap-2 h-10 px-5 rounded-full bg-secondary text-secondary-foreground font-medium text-sm hover:bg-secondary/80 transition-colors"
               >
-                Today's Tasks <ArrowDown className="h-4 w-4" strokeWidth={1.5} />
+                Today's Tasks{" "}
+                <ArrowDown className="h-4 w-4" strokeWidth={1.5} />
               </button>
             </div>
           </div>
@@ -120,8 +129,18 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { icon: Flame, label: "Streak", value: streakLabel, color: "text-orange-500" },
-          { icon: Clock, label: "Today", value: todayFocusLabel, color: "text-blue-500" },
+          {
+            icon: Flame,
+            label: "Streak",
+            value: streakLabel,
+            color: "text-orange-500",
+          },
+          {
+            icon: Clock,
+            label: "Today",
+            value: todayFocusLabel,
+            color: "text-blue-500",
+          },
           {
             icon: CheckCircle2,
             label: "Completed",
@@ -199,6 +218,13 @@ export default function Dashboard() {
             </WidgetScrollArea>
           )}
         </div>
+      </div>
+
+      <div className="bg-card rounded-2xl p-5 shadow-sm border border-border flex flex-col min-h-0 overflow-hidden">
+        <h2 className="text-lg font-semibold text-foreground mb-4 shrink-0">
+          Learning Resources
+        </h2>
+        <AILearningResourcesPanel layout="dashboard" />
       </div>
 
       <div className="bg-card rounded-2xl p-5 shadow-sm border border-border">

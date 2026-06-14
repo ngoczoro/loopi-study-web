@@ -6,10 +6,13 @@ export const TASK_LIST_SCROLL_MAX = "max-h-[calc(3*3.25rem+1rem)]";
 /** ~60px row + 12px gap × 2 between 3 rows */
 export const DEADLINE_LIST_SCROLL_MAX = "max-h-[calc(3*3.75rem+1.5rem)]";
 
-const VISIBLE_ITEMS = 3;
+/** ~56px row + 8px gap × 2 between 3 rows */
+export const LEARNING_RESOURCE_SCROLL_MAX = "max-h-[calc(3*3.5rem+1rem)]";
+
+const DEFAULT_VISIBLE_ITEMS = 3;
 
 /**
- * Internal scroll for dashboard widgets — shows ~3 items, scrolls the rest.
+ * Internal scroll for dashboard widgets — shows ~N items, scrolls the rest.
  */
 export function WidgetScrollArea({
   children,
@@ -17,8 +20,9 @@ export function WidgetScrollArea({
   maxHeightClass,
   listClassName,
   scrollHint = "Scroll for more",
+  visibleItems = DEFAULT_VISIBLE_ITEMS,
 }) {
-  const scrollable = itemCount > VISIBLE_ITEMS;
+  const scrollable = itemCount > visibleItems;
 
   return (
     <div className="relative min-h-0">
