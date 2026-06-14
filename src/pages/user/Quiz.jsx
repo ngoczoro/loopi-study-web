@@ -11,7 +11,7 @@ import {
   generateSubjectQuiz,
   mapGeneratedQuizForStore,
 } from "@/services/aiService";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import QuizList from "@/components/QuizList";
 import QuizReviewSummary from "@/components/QuizReviewSummary";
 import QuizWeakTopicsCard from "@/components/QuizWeakTopicsCard";
@@ -54,8 +54,11 @@ export default function Quiz() {
   const [reviewFilter, setReviewFilter] = useState("all");
   const [submitting, setSubmitting] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [deepLinkLoading, setDeepLinkLoading] = useState(false);
   const startTimeRef = useRef(0);
+  const consumedDeepLinkRef = useRef(null);
   const location = useLocation();
+  const navigate = useNavigate();
 
   const [showAiModal, setShowAiModal] = useState(false);
   const [aiTopic, setAiTopic] = useState("");
@@ -65,7 +68,9 @@ export default function Quiz() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiPreview, setAiPreview] = useState(null);
 
-  const quiz = quizzes.find((q) => q.id === activeQuiz);
+  const quiz = activeQuiz
+    ? (quizzes ?? []).find((q) => q.id === activeQuiz)
+    : null;
   const activeAttempt = viewingAttempt ?? (quiz ? lastAttempts[quiz.id] : null);
 
   const loadAttemptHistory = useCallback(async (quizId) => {
@@ -140,32 +145,70 @@ export default function Quiz() {
     };
   }, [quizzes, quizzesLoading]);
 
+  const clearQuizRouteState = useCallback(() => {
+    if (location.state?.activeQuizId) {
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.pathname, location.state, navigate]);
+
   useEffect(() => {
     const targetId = location.state?.activeQuizId;
     if (!targetId || activeQuiz || quizzesLoading) return;
+    if (consumedDeepLinkRef.current === targetId) return;
+
+    consumedDeepLinkRef.current = targetId;
 
     const matchedQuiz = quizzes.find((item) => item.id === targetId);
     if (matchedQuiz) {
       handleSelectQuiz(targetId);
-      window.history.replaceState({}, document.title);
+      clearQuizRouteState();
       return;
     }
 
     let cancelled = false;
+    setDeepLinkLoading(true);
 
     (async () => {
       const result = await getQuizById(targetId);
-      if (cancelled || !result.success) return;
+      if (cancelled) return;
+
+      setDeepLinkLoading(false);
+
+      if (!result.success || !result.data) {
+        consumedDeepLinkRef.current = null;
+        toast.error(result.message || "Quiz not found");
+        clearQuizRouteState();
+        return;
+      }
 
       upsertQuiz(result.data);
       handleSelectQuiz(targetId);
-      window.history.replaceState({}, document.title);
+      clearQuizRouteState();
     })();
 
     return () => {
       cancelled = true;
+      setDeepLinkLoading(false);
     };
-  }, [location.state, quizzes, quizzesLoading, activeQuiz, upsertQuiz]);
+  }, [
+    location.state,
+    quizzes,
+    quizzesLoading,
+    activeQuiz,
+    upsertQuiz,
+    clearQuizRouteState,
+  ]);
+
+  useEffect(() => {
+    if (!activeQuiz || quizzesLoading || deepLinkLoading) return;
+
+    const exists = (quizzes ?? []).some((item) => item.id === activeQuiz);
+    if (!exists) {
+      setActiveQuiz(null);
+      consumedDeepLinkRef.current = null;
+      clearQuizRouteState();
+    }
+  }, [activeQuiz, quizzes, quizzesLoading, deepLinkLoading, clearQuizRouteState]);
 
   useEffect(() => {
     if (!showResults || !quiz?.id) return;
@@ -180,7 +223,8 @@ export default function Quiz() {
 
   const handleSubmit = async () => {
     if (!quiz || submitting) return;
-    if (Object.keys(answers).length < quiz.questions.length) {
+    const questions = quiz.questions ?? [];
+    if (Object.keys(answers).length < questions.length) {
       toast.error("Please answer all questions first!");
       return;
     }
@@ -192,7 +236,7 @@ export default function Quiz() {
     }
 
     const result = await submitQuizAttempt(quiz.id, {
-      answers: quiz.questions.map((_, index) => ({
+      answers: questions.map((_, index) => ({
         questionIndex: index,
         selectedIndex: answers[index],
       })),
@@ -275,10 +319,14 @@ export default function Quiz() {
 
   const handleBack = () => {
     setActiveQuiz(null);
+    setAnswers({});
+    setShowResults(false);
     setReviewMode(false);
     setViewingAttempt(null);
     setAttemptHistory([]);
     setReviewFilter("all");
+    consumedDeepLinkRef.current = null;
+    clearQuizRouteState();
   };
 
   const handleAiGenerate = async (forceRegenerate = true) => {
@@ -346,6 +394,15 @@ export default function Quiz() {
   };
 
   if (!quiz) {
+    if (activeQuiz && (quizzesLoading || deepLinkLoading)) {
+      return (
+        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          Loading quiz...
+        </div>
+      );
+    }
+
     return (
       <>
         {quizzesLoading ? (
@@ -534,7 +591,7 @@ export default function Quiz() {
           <p className="text-sm text-muted-foreground">
             {showResults
               ? "📋 Xem lại kết quả bài làm"
-              : `${quiz.questions.length} câu hỏi`}
+              : `${(quiz.questions ?? []).length} câu hỏi`}
           </p>
         </div>
         <button
@@ -616,7 +673,7 @@ export default function Quiz() {
       {!showResults && (
         <>
           <div className="space-y-4">
-            {quiz.questions.map((q, qi) => (
+            {(quiz.questions ?? []).map((q, qi) => (
               <div key={qi} id={`quiz-q-${qi}`}>
                 <QuizQuestionCard
                   question={q}

@@ -32,6 +32,7 @@ import {
   SUPPORTED_FILES_LABEL,
 } from "@/lib/content-utils";
 import { FilePreviewActions } from "@/components/FilePreviewActions";
+import { useLocation } from "react-router-dom";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,6 +50,7 @@ const defaultForm = { title: "", subjectId: "", content: "", url: "" };
 
 export default function Notes() {
   const accessToken = useAuthStore((s) => s.accessToken);
+  const location = useLocation();
 
   const {
     content,
@@ -97,6 +99,17 @@ export default function Notes() {
     fetchSubjects();
     fetchContent();
   }, [accessToken, fetchSubjects, fetchContent]);
+
+  useEffect(() => {
+    const contentId = location.state?.contentId;
+    if (!contentId || content.length === 0) return;
+
+    const doc = content.find((item) => item.id === contentId);
+    if (doc) {
+      setViewDoc(doc);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state, content]);
 
   useEffect(() => {
     if (contentError) {

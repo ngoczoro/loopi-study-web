@@ -115,6 +115,7 @@ export default function AILearningResourcesPanel({
   const searchSessionRef = useRef(0);
 
   const isDashboardLayout = layout === "dashboard";
+  const isCompactSearch = !isDashboardLayout;
   const scopeLabel = subjectName ? `cho môn ${subjectName}` : "mọi chủ đề";
 
   const clearRecommendationResult = useCallback(() => {
@@ -388,7 +389,7 @@ export default function AILearningResourcesPanel({
         <p className="text-xs text-muted-foreground mb-2">
           Bạn muốn học gì hôm nay? ({scopeLabel})
         </p>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <input
             value={query}
             onChange={(e) => handleQueryChange(e.target.value)}
@@ -396,20 +397,38 @@ export default function AILearningResourcesPanel({
               if (e.key === "Enter") handleSearch();
             }}
             placeholder="Java OOP, React Hook, SQL Normalization..."
-            className="flex-1 h-10 rounded-xl bg-background px-4 text-sm text-foreground border border-border outline-none focus:ring-2 focus:ring-primary/20"
+            className={cn(
+              "flex-1 min-w-0 rounded-xl bg-background text-foreground border border-border outline-none focus:ring-2 focus:ring-primary/20",
+              isCompactSearch
+                ? "h-7 px-3 text-xs"
+                : "h-10 px-4 text-sm",
+            )}
           />
           <button
             type="button"
             onClick={() => handleSearch()}
             disabled={loading}
-            className="h-10 px-4 rounded-xl bg-primary text-primary-foreground text-sm font-medium inline-flex items-center gap-2 hover:bg-primary/90 disabled:opacity-50"
+            className={cn(
+              "inline-flex items-center justify-center gap-1 rounded-full bg-primary text-primary-foreground font-medium shrink-0 whitespace-nowrap hover:bg-primary/90 disabled:opacity-50",
+              isCompactSearch
+                ? "h-7 px-3 text-[11px]"
+                : "h-10 px-4 text-sm",
+            )}
           >
             {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2
+                className={cn(
+                  "animate-spin shrink-0",
+                  isCompactSearch ? "h-3 w-3" : "h-4 w-4",
+                )}
+              />
             ) : (
-              <Search className="h-4 w-4" />
+              <Search
+                className={cn("shrink-0", isCompactSearch ? "h-3 w-3" : "h-4 w-4")}
+                strokeWidth={isCompactSearch ? 2 : 1.5}
+              />
             )}
-            Tìm kiếm
+            {isCompactSearch ? "Tìm" : "Tìm kiếm"}
           </button>
         </div>
       </div>

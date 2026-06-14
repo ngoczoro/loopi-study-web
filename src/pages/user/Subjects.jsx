@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   BookOpen,
   Plus,
@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { format, addDays, startOfDay } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/button";
@@ -114,6 +114,8 @@ export default function Subjects() {
     addViolation,
   } = useAppStore();
   const navigate = useNavigate();
+  const location = useLocation();
+  const consumedSubjectDeepLinkRef = useRef(null);
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
@@ -227,6 +229,19 @@ export default function Subjects() {
     }
   }, [contentError]);
 
+  useEffect(() => {
+    const subjectId = location.state?.subjectId;
+    if (!subjectId || subjects.length === 0) return;
+    if (consumedSubjectDeepLinkRef.current === subjectId) return;
+
+    const subject = subjects.find((item) => item.id === subjectId);
+    if (!subject) return;
+
+    consumedSubjectDeepLinkRef.current = subjectId;
+    handleSelectSubject(subject);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.state, subjects, location.pathname, navigate]);
+
   const handleSelectSubject = async (subject) => {
     setSelectedSubject(subject);
     const result = await fetchSubjectById(subject.id);
@@ -237,6 +252,14 @@ export default function Subjects() {
     }
     await fetchContentBySubject(subject.id);
   };
+
+  const closeSubjectDrawer = useCallback(() => {
+    setSelectedSubject(null);
+    consumedSubjectDeepLinkRef.current = null;
+    if (location.state?.subjectId) {
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.pathname, location.state, navigate]);
 
   const openQuickQuiz = (s) => {
     setQuizSubject(s);
@@ -740,7 +763,9 @@ export default function Subjects() {
       {/* Subject Detail Sheet */}
       <Sheet
         open={!!selectedSubject}
-        onOpenChange={(o) => !o && setSelectedSubject(null)}
+        onOpenChange={(open) => {
+          if (!open) closeSubjectDrawer();
+        }}
       >
         <SheetContent className="overflow-auto">
           {selectedSubject && (
