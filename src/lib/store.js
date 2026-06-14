@@ -41,6 +41,12 @@ import {
   toggleTaskComplete as toggleTaskCompleteAPI,
   deleteTask as deleteTaskAPI,
 } from "../services/taskService";
+import {
+  getQuizzes,
+  createQuiz as createQuizAPI,
+  deleteQuiz as deleteQuizAPI,
+  updateQuiz as updateQuizAPI,
+} from "../services/quizService";
 
 /**
  * @typedef {Object} Subject
@@ -163,6 +169,8 @@ export const useAppStore = create((set, get) => ({
   contentError: null,
 
   quizzes: [],
+  quizzesLoading: false,
+  quizzesError: null,
 
   tasks: [],
   tasksLoading: false,
@@ -562,10 +570,81 @@ export const useAppStore = create((set, get) => ({
     }),
 
   // Quizzes
-  addQuiz: (q) =>
-    set((state) => ({ quizzes: [...state.quizzes, { ...q, id: uid() }] })),
-  deleteQuiz: (id) =>
-    set((state) => ({ quizzes: state.quizzes.filter((q) => q.id !== id) })),
+  fetchQuizzes: async (options = {}) => {
+    set({ quizzesLoading: true, quizzesError: null });
+    const result = await getQuizzes(options);
+
+    if (result.success) {
+      set({
+        quizzes: result.data,
+        quizzesLoading: false,
+        quizzesError: null,
+      });
+      return { ok: true, data: result.data };
+    }
+
+    set({ quizzesLoading: false, quizzesError: result.message });
+    return { ok: false, message: result.message };
+  },
+
+  upsertQuiz: (quiz) =>
+    set((state) => {
+      const normalized = { ...quiz, id: quiz.id || uid() };
+      const exists = state.quizzes.some((item) => item.id === normalized.id);
+
+      if (exists) {
+        return {
+          quizzes: state.quizzes.map((item) =>
+            item.id === normalized.id ? { ...item, ...normalized } : item,
+          ),
+        };
+      }
+
+      return { quizzes: [normalized, ...state.quizzes] };
+    }),
+
+  addQuiz: (quiz) => {
+    get().upsertQuiz(quiz);
+  },
+
+  createQuiz: async (payload) => {
+    const result = await createQuizAPI(payload);
+
+    if (result.success) {
+      get().upsertQuiz(result.data);
+      return { ok: true, data: result.data };
+    }
+
+    return { ok: false, message: result.message };
+  },
+
+  updateQuiz: async (id, title) => {
+    const result = await updateQuizAPI(id, { title });
+
+    if (result.success) {
+      set((state) => ({
+        quizzes: state.quizzes.map((quiz) =>
+          quiz.id === id ? { ...quiz, ...result.data } : quiz,
+        ),
+      }));
+      return { ok: true, data: result.data };
+    }
+
+    return { ok: false, message: result.message };
+  },
+
+  deleteQuiz: async (id) => {
+    const result = await deleteQuizAPI(id);
+
+    if (result.success) {
+      set((state) => ({
+        quizzes: state.quizzes.filter((quiz) => quiz.id !== id),
+      }));
+      return { ok: true };
+    }
+
+    return { ok: false, message: result.message };
+  },
 
   // Sessions (planner sync — API-backed sessions replace mock list when loaded)
   replaceSessions: (sessions) => set({ sessions }),

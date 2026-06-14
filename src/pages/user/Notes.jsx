@@ -19,10 +19,10 @@ import { useAppStore } from "@/lib/store";
 import { useAuthStore } from "@/lib/authStore";
 import { toast } from "sonner";
 import {
-  generateMockQuiz,
   suggestMaterials,
 } from "@/lib/ai-utils";
 import AIDocumentSummary from "@/components/ai/AIDocumentSummary";
+import AIQuizGenerator from "@/components/ai/AIQuizGenerator";
 import {
   isValidUrl,
   normalizeSubjectId,
@@ -85,6 +85,7 @@ export default function Notes() {
   });
 
   const [deleteId, setDeleteId] = useState(null);
+  const [quizTargetDoc, setQuizTargetDoc] = useState(null);
 
   const [aiLoading, setAiLoading] = useState(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -278,23 +279,9 @@ export default function Notes() {
     toast.success("Content updated successfully");
   };
 
-  const handleGenerateQuizFromDoc = (doc) => {
-    setAiLoading("quiz");
-
-    setTimeout(() => {
-      const result = generateMockQuiz(doc.title, doc.subjectId);
-
-      addQuiz({
-        title: `Quiz from: ${doc.title}`,
-        subjectId: doc.subjectId,
-        questions: result.questions,
-        createdAt: new Date().toISOString(),
-      });
-
-      setAiLoading(null);
-      setViewDoc(null);
-      toast.success("Quiz generated");
-    }, 1000);
+  const handleQuizCreated = (quiz) => {
+    addQuiz(quiz);
+    setViewDoc(null);
   };
 
   const handleSuggestMaterials = () => {
@@ -417,7 +404,10 @@ export default function Notes() {
                   className="flex-1 min-w-0 cursor-pointer"
                   onClick={() => setViewDoc(note)}
                 >
-                  <p className="text-sm font-medium text-foreground truncate">
+                  <p
+                    className="text-sm font-medium text-foreground truncate"
+                    title={note.title}
+                  >
                     {note.title}
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -562,16 +552,12 @@ export default function Notes() {
                 </p>
                 <div className="flex gap-2 flex-wrap">
                   <button
-                    onClick={() => handleGenerateQuizFromDoc(viewDoc)}
+                    onClick={() => setQuizTargetDoc(viewDoc)}
                     disabled={!!aiLoading}
                     className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors disabled:opacity-50"
                   >
-                    {aiLoading === "quiz" ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Brain className="h-3.5 w-3.5" />
-                    )}{" "}
-                    Generate Quiz
+                    <Brain className="h-3.5 w-3.5" />
+                    Tạo Quiz bằng AI
                   </button>
                 </div>
               </div>
@@ -600,6 +586,18 @@ export default function Notes() {
           </div>
         )}
       </AnimatePresence>
+
+      <AIQuizGenerator
+        open={Boolean(quizTargetDoc)}
+        onOpenChange={(open) => {
+          if (!open) setQuizTargetDoc(null);
+        }}
+        documentId={quizTargetDoc?.id}
+        documentTitle={quizTargetDoc?.title}
+        document={quizTargetDoc}
+        subjectId={quizTargetDoc?.subjectId}
+        onQuizCreated={handleQuizCreated}
+      />
 
       <AnimatePresence>
         {editDoc && (

@@ -27,8 +27,13 @@ import { Button } from "@/components/button";
 import { Calendar as CalendarPicker } from "@/components/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/popover";
 import { toast } from "sonner";
-import { generateMockQuiz, moderateContent } from "@/lib/ai-utils";
+import { moderateContent } from "@/lib/ai-utils";
+import {
+  generateSubjectQuiz,
+  mapGeneratedQuizForStore,
+} from "@/services/aiService";
 import AIDocumentSummary from "@/components/ai/AIDocumentSummary";
+import AIQuizGenerator from "@/components/ai/AIQuizGenerator";
 import AiPlanWizard from "@/components/ai-plan/AiPlanWizard";
 import { AI_PLAN_MODES } from "@/lib/study-plan/types";
 import {
@@ -101,6 +106,8 @@ export default function Subjects() {
     updateContentItem,
     deleteContentItem,
     addQuiz,
+    fetchQuizzes,
+    upsertQuiz,
     addViolation,
   } = useAppStore();
   const navigate = useNavigate();
@@ -128,6 +135,7 @@ export default function Subjects() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [replacementFile, setReplacementFile] = useState(null);
   const [viewDoc, setViewDoc] = useState(null);
+  const [quizTargetDoc, setQuizTargetDoc] = useState(null);
   const [editDoc, setEditDoc] = useState(null);
   const [editForm, setEditForm] = useState({
     title: "",
@@ -138,6 +146,8 @@ export default function Subjects() {
   // Quick AI Quiz state (per subject)
   const [quizSubject, setQuizSubject] = useState(null);
   const [aiTopic, setAiTopic] = useState("");
+  const [aiDifficulty, setAiDifficulty] = useState("mixed");
+  const [aiNumberOfQuestions, setAiNumberOfQuestions] = useState(5);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiPreview, setAiPreview] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -197,7 +207,8 @@ export default function Subjects() {
     if (!accessToken) return;
     fetchSubjects();
     fetchContent();
-  }, [accessToken, fetchSubjects, fetchContent]);
+    fetchQuizzes();
+  }, [accessToken, fetchSubjects, fetchContent, fetchQuizzes]);
 
   useEffect(() => {
     if (subjectsError) {
@@ -228,7 +239,15 @@ export default function Subjects() {
     setAiPreview(null);
   };
 
-  const handleGenerateQuiz = () => {
+  const handleQuizCreated = (quiz) => {
+    addQuiz(quiz);
+    setViewDoc(null);
+    fetchQuizzes();
+  };
+
+  const handleGenerateQuiz = async (forceRegenerate = true) => {
+    if (!quizSubject) return;
+
     if (!aiTopic.trim()) {
       toast.error("Please enter a topic");
       return;
@@ -249,25 +268,36 @@ export default function Subjects() {
       toast.error("Content flagged for moderation.");
       return;
     }
+
     setAiLoading(true);
-    setTimeout(() => {
-      setAiPreview(generateMockQuiz(aiTopic, quizSubject?.id || null));
-      setAiLoading(false);
-    }, 1000);
+    const result = await generateSubjectQuiz(quizSubject.id, {
+      topic: aiTopic.trim(),
+      difficulty: aiDifficulty,
+      numberOfQuestions: aiNumberOfQuestions,
+      forceRegenerate,
+    });
+    setAiLoading(false);
+
+    if (!result.success) {
+      toast.error(result.message || "Không thể tạo quiz bằng AI");
+      return;
+    }
+
+    const quiz = mapGeneratedQuizForStore(result.data, {
+      subjectId: quizSubject.id,
+    });
+    upsertQuiz(quiz);
+    setAiPreview(quiz);
   };
 
   const handleSaveQuiz = () => {
     if (!aiPreview || !quizSubject) return;
-    addQuiz({
-      title: aiPreview.title,
-      subjectId: quizSubject.id,
-      questions: aiPreview.questions,
-      createdAt: new Date().toISOString(),
-    });
+
     toast.success("Quiz saved! 🎉");
     setQuizSubject(null);
     setAiPreview(null);
     setAiTopic("");
+    navigate("/quiz", { state: { activeQuizId: aiPreview.id } });
   };
 
   const handleStartStudy = (s) => navigate(`/pomodoro?subjectId=${s.id}`);
@@ -824,7 +854,10 @@ export default function Subjects() {
                                       className="flex-1 min-w-0 cursor-pointer"
                                       onClick={() => setViewDoc(doc)}
                                     >
-                                      <p className="text-sm font-medium text-foreground truncate">
+                                      <p
+                                        className="text-sm font-medium text-foreground truncate"
+                                        title={doc.title}
+                                      >
                                         {doc.title}
                                       </p>
                                       <p className="text-[10px] text-muted-foreground">
@@ -941,7 +974,10 @@ export default function Subjects() {
                                     />
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-foreground truncate">
+                                    <p
+                                      className="text-sm font-medium text-foreground truncate"
+                                      title={quiz.title}
+                                    >
                                       {quiz.title}
                                     </p>
                                     <p className="text-[10px] text-muted-foreground">
@@ -1080,6 +1116,17 @@ export default function Subjects() {
                 document={viewDoc}
               />
 
+              <div className="flex gap-2 mt-4 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setQuizTargetDoc(viewDoc)}
+                  className="inline-flex items-center justify-center gap-1.5 flex-1 h-10 rounded-full bg-primary/10 text-primary text-sm font-medium hover:bg-primary/20 transition-colors"
+                >
+                  <Brain className="h-4 w-4" />
+                  Tạo Quiz bằng AI
+                </button>
+              </div>
+
               <div className="flex gap-2 mt-4">
                 <button
                   onClick={() => {
@@ -1104,6 +1151,18 @@ export default function Subjects() {
           </div>
         )}
       </AnimatePresence>
+
+      <AIQuizGenerator
+        open={Boolean(quizTargetDoc)}
+        onOpenChange={(open) => {
+          if (!open) setQuizTargetDoc(null);
+        }}
+        documentId={quizTargetDoc?.id}
+        documentTitle={quizTargetDoc?.title}
+        document={quizTargetDoc}
+        subjectId={quizTargetDoc?.subjectId}
+        onQuizCreated={handleQuizCreated}
+      />
 
       {/* Edit Doc Modal */}
       <AnimatePresence>
@@ -1645,8 +1704,33 @@ export default function Subjects() {
                     onChange={(e) => setAiTopic(e.target.value)}
                     className="w-full h-10 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none"
                   />
+                  <select
+                    value={aiDifficulty}
+                    onChange={(e) => setAiDifficulty(e.target.value)}
+                    disabled={aiLoading}
+                    className="w-full h-10 rounded-xl bg-background px-3 text-sm text-foreground border border-border outline-none disabled:opacity-50"
+                  >
+                    <option value="mixed">Mix nhiều mức độ</option>
+                    <option value="easy">Dễ</option>
+                    <option value="medium">Trung bình</option>
+                    <option value="hard">Khó</option>
+                  </select>
+                  <select
+                    value={aiNumberOfQuestions}
+                    onChange={(e) =>
+                      setAiNumberOfQuestions(Number(e.target.value))
+                    }
+                    disabled={aiLoading}
+                    className="w-full h-10 rounded-xl bg-background px-3 text-sm text-foreground border border-border outline-none disabled:opacity-50"
+                  >
+                    {[5, 10, 15, 20].map((count) => (
+                      <option key={count} value={count}>
+                        {count} câu
+                      </option>
+                    ))}
+                  </select>
                   <button
-                    onClick={handleGenerateQuiz}
+                    onClick={() => handleGenerateQuiz(true)}
                     disabled={aiLoading}
                     className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
                   >
@@ -1692,8 +1776,9 @@ export default function Subjects() {
                   </div>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => setAiPreview(null)}
-                      className="flex-1 h-10 rounded-full bg-secondary text-secondary-foreground font-medium text-sm hover:bg-secondary/80"
+                      onClick={() => handleGenerateQuiz(true)}
+                      disabled={aiLoading}
+                      className="flex-1 h-10 rounded-full bg-secondary text-secondary-foreground font-medium text-sm hover:bg-secondary/80 disabled:opacity-50"
                     >
                       Regenerate
                     </button>
