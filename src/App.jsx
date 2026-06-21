@@ -18,6 +18,7 @@ import AdminContentPreview from "./pages/admin/AdminContentPreview";
 import AdminWarnings from "./pages/admin/AdminWarnings";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminUsers from "./pages/admin/AdminUsers";
+import AdminProfile from "./pages/admin/AdminProfile";
 import NotFound from "./pages/NotFound";
 import { Layout } from "./components/Layout";
 import AuthLoadingScreen from "./components/AuthLoadingScreen";
@@ -56,6 +57,7 @@ function App() {
           <Route path="/admin/content" element={<AdminContent />} />
           <Route path="/admin/content/:id" element={<AdminContentPreview />} />
           <Route path="/admin/warnings" element={<AdminWarnings />} />
+          <Route path="/admin/profile" element={<AdminProfile />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </AdminLayout>

@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import {
   useAdminContent,
   useAdminDeleteContent,
@@ -67,6 +69,7 @@ function EmptyRow({ colSpan, message }) {
 }
 
 export default function AdminContent() {
+  const location = useLocation();
   const {
     subjects,
     isLoading: subjectsLoading,
@@ -86,6 +89,25 @@ export default function AdminContent() {
   const deletingContentId = deleteContentMutation.isPending
     ? deleteContentMutation.variables
     : null;
+
+  useEffect(() => {
+    const subjectId = location.state?.highlightSubjectId;
+    if (!subjectId || subjectsLoading) return;
+
+    const element = document.getElementById(`admin-subject-row-${subjectId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state, subjectsLoading, subjects.length]);
+
+  useEffect(() => {
+    const quizTitle = location.state?.highlightQuizTitle;
+    if (!quizTitle) return;
+
+    toast.info(`Quiz found: ${quizTitle}. Open Content Management to review related documents.`);
+    window.history.replaceState({}, document.title);
+  }, [location.state]);
 
   const handleDeleteSubject = async (id) => {
     try {
@@ -148,7 +170,7 @@ export default function AdminContent() {
               <EmptyRow colSpan={5} message="No subjects found." />
             ) : (
               subjects.map((s) => (
-                <TableRow key={s.id}>
+                <TableRow key={s.id} id={`admin-subject-row-${s.id}`}>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       {s.color ? (

@@ -3,6 +3,7 @@
 
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { motion } from "framer-motion";
 
@@ -125,6 +126,7 @@ const defaultPagination = {
 
 
 export default function AdminUsers() {
+  const [searchParams] = useSearchParams();
 
   const [users, setUsers] = useState([]);
 
@@ -155,6 +157,13 @@ export default function AdminUsers() {
     return () => clearTimeout(timer);
 
   }, [search]);
+
+  useEffect(() => {
+    const initialSearch = searchParams.get("search");
+    if (initialSearch) {
+      setSearch(initialSearch);
+    }
+  }, [searchParams]);
 
 
 

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import LockUserModal from "@/components/admin/LockUserModal";
 import { Skeleton } from "@/components/skeleton";
 import {
@@ -84,6 +85,7 @@ function UserSectionSkeleton() {
 }
 
 export default function AdminWarnings() {
+  const location = useLocation();
   const { stats, isLoading: statsLoading, error: statsError } =
     useAdminViolationStats();
   const {
@@ -105,6 +107,17 @@ export default function AdminWarnings() {
   const unlockActionId = unlockMutation.isPending
     ? unlockMutation.variables
     : null;
+
+  useEffect(() => {
+    const violationId = location.state?.violationId;
+    if (!violationId || listLoading) return;
+
+    const element = document.getElementById(`violation-row-${violationId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state, listLoading, flaggedUsers.length]);
 
   const statCounts = {
     low: stats?.lowRiskUsers ?? 0,
@@ -328,7 +341,7 @@ export default function AdminWarnings() {
 
                 <TableBody>
                   {fu.violations.map((v) => (
-                    <TableRow key={v.id}>
+                    <TableRow key={v.id} id={`violation-row-${v.id}`}>
                       <TableCell>
                         <span className="flex items-center gap-1.5">
                           <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" />
