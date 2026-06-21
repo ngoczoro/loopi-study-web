@@ -372,3 +372,85 @@ export const deleteSavedLearningResource = async (id) => {
     return handleError(error, "Failed to delete saved learning resource");
   }
 };
+
+const DOCUMENT_SEARCH_FALLBACK =
+  "Không thể tìm kiếm trong tài liệu. Vui lòng thử lại sau.";
+
+export const searchInsideDocument = async ({
+  query,
+  documentId = null,
+  subjectId = null,
+  limit = 5,
+} = {}) => {
+  try {
+    const payload = {
+      query: String(query ?? "").trim(),
+      limit,
+    };
+
+    if (documentId) payload.documentId = documentId;
+    if (subjectId) payload.subjectId = subjectId;
+
+    const response = await api.post("/ai/document-search", payload);
+    return {
+      success: true,
+      data: response.data.data,
+      message: response.data.message,
+    };
+  } catch (error) {
+    console.error("Error searching inside document:", error);
+    const status = error.response?.status;
+
+    if (status === 400) {
+      return handleError(
+        error,
+        error.response?.data?.message ||
+          "Không thể tìm kiếm với yêu cầu này.",
+      );
+    }
+
+    if (status === 500) {
+      return {
+        success: false,
+        status,
+        message: DOCUMENT_SEARCH_FALLBACK,
+        error: error.response?.data,
+      };
+    }
+
+    return handleError(error, DOCUMENT_SEARCH_FALLBACK);
+  }
+};
+
+export const explainDocumentSearch = async ({ query, passages } = {}) => {
+  try {
+    const response = await api.post("/ai/document-search/explain", {
+      query: String(query ?? "").trim(),
+      passages,
+    });
+    return {
+      success: true,
+      data: response.data.data,
+      message: response.data.message,
+    };
+  } catch (error) {
+    console.error("Error explaining document search:", error);
+    const status = error.response?.status;
+
+    if (status === 500) {
+      return {
+        success: false,
+        status,
+        message: "Không thể tạo giải thích AI. Vui lòng thử lại sau.",
+        error: error.response?.data,
+      };
+    }
+
+    return handleError(
+      error,
+      "Không thể tạo giải thích AI. Vui lòng thử lại sau.",
+    );
+  }
+};
+
+export const isAiDocumentSearchSupported = isAiSummarySupported;

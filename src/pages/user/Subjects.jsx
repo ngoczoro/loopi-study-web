@@ -18,6 +18,7 @@ import {
   Loader2,
   Brain,
   Globe,
+  Search,
 } from "lucide-react";
 import { format, addDays, startOfDay } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
@@ -36,6 +37,7 @@ import {
 } from "@/services/aiService";
 import AILearningResourcesPanel from "@/components/ai/AILearningResourcesPanel";
 import AIDocumentSummary from "@/components/ai/AIDocumentSummary";
+import AIDocumentSearchPanel from "@/components/ai/AIDocumentSearchPanel";
 import AIQuizGenerator from "@/components/ai/AIQuizGenerator";
 import AiPlanWizard from "@/components/ai-plan/AiPlanWizard";
 import { AI_PLAN_MODES } from "@/lib/study-plan/types";
@@ -1063,6 +1065,33 @@ export default function Subjects() {
                   </AccordionItem>
 
                   <AccordionItem
+                    value="document-search"
+                    className="border-none"
+                  >
+                    <AccordionTrigger className="py-3 px-4 rounded-xl bg-secondary/30 hover:bg-secondary/50 hover:no-underline transition-colors data-[state=open]:rounded-b-none">
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                          <Search
+                            className="h-3.5 w-3.5 text-primary"
+                            strokeWidth={1.5}
+                          />
+                        </div>
+                        <span className="text-sm font-semibold text-foreground">
+                          Tìm trong tài liệu môn học
+                        </span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="pb-0">
+                      <div className="px-4 pb-4 pt-1 bg-secondary/30 rounded-b-xl">
+                        <AIDocumentSearchPanel
+                          subjectId={selectedSubject.id}
+                          subjectName={selectedSubject.name}
+                        />
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+
+                  <AccordionItem
                     value="learning-resources"
                     className="border-none"
                   >
@@ -1200,6 +1229,14 @@ export default function Subjects() {
                 documentId={viewDoc.id}
                 documentTitle={viewDoc.title}
                 document={viewDoc}
+              />
+
+              <AIDocumentSearchPanel
+                documentId={viewDoc.id}
+                documentTitle={viewDoc.title}
+                document={viewDoc}
+                compact
+                className="mt-4"
               />
 
               <div className="flex gap-2 mt-4 mb-2">

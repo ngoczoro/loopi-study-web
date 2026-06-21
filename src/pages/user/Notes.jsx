@@ -22,6 +22,7 @@ import {
   suggestMaterials,
 } from "@/lib/ai-utils";
 import AIDocumentSummary from "@/components/ai/AIDocumentSummary";
+import AIDocumentSearchPanel from "@/components/ai/AIDocumentSearchPanel";
 import AIQuizGenerator from "@/components/ai/AIQuizGenerator";
 import {
   isValidUrl,
@@ -557,6 +558,14 @@ export default function Notes() {
                 documentId={viewDoc.id}
                 documentTitle={viewDoc.title}
                 document={viewDoc}
+              />
+
+              <AIDocumentSearchPanel
+                documentId={viewDoc.id}
+                documentTitle={viewDoc.title}
+                document={viewDoc}
+                compact
+                className="mt-4"
               />
 
               <div className="mt-4 pt-3 border-t border-border/50">
