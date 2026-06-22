@@ -5,7 +5,7 @@ const AI_SUMMARY_FALLBACK =
   "AI summary could not be generated. Please try again later.";
 
 const AI_QUIZ_FALLBACK =
-  "Không thể tạo quiz bằng AI. Vui lòng thử lại sau.";
+  "Could not generate quiz with AI. Please try again later.";
 
 const handleError = (error, fallback) => ({
   success: false,
@@ -121,7 +121,7 @@ export const generateDocumentQuiz = async (
       error,
       status === 400
         ? error.response?.data?.message ||
-            "Không thể tạo quiz từ tài liệu này."
+            "Could not generate a quiz from this document."
         : AI_QUIZ_FALLBACK,
     );
   }
@@ -218,7 +218,7 @@ export const mapGeneratedQuizForStore = (data, overrides = {}) => ({
 });
 
 const RESOURCE_FALLBACK =
-  "Không thể tìm nguồn học lúc này. Vui lòng thử lại.";
+  "Could not find learning resources right now. Please try again.";
 
 const normalizeOptionalSubjectId = (subjectId) => {
   if (subjectId == null || subjectId === "") {
@@ -374,7 +374,7 @@ export const deleteSavedLearningResource = async (id) => {
 };
 
 const DOCUMENT_SEARCH_FALLBACK =
-  "Không thể tìm kiếm trong tài liệu. Vui lòng thử lại sau.";
+  "Could not search within documents. Please try again later.";
 
 export const searchInsideDocument = async ({
   query,
@@ -405,7 +405,7 @@ export const searchInsideDocument = async ({
       return handleError(
         error,
         error.response?.data?.message ||
-          "Không thể tìm kiếm với yêu cầu này.",
+          "Could not search with this request.",
       );
     }
 
@@ -441,14 +441,14 @@ export const explainDocumentSearch = async ({ query, passages } = {}) => {
       return {
         success: false,
         status,
-        message: "Không thể tạo giải thích AI. Vui lòng thử lại sau.",
+        message: "Could not generate AI explanation. Please try again later.",
         error: error.response?.data,
       };
     }
 
     return handleError(
       error,
-      "Không thể tạo giải thích AI. Vui lòng thử lại sau.",
+      "Could not generate AI explanation. Please try again later.",
     );
   }
 };

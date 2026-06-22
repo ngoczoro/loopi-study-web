@@ -35,6 +35,19 @@ export const getRecentContent = async (params = {}) => {
   }
 };
 
+export const getWeeklyActivity = async () => {
+  try {
+    const response = await api.get("/admin/dashboard/weekly-activity");
+    return {
+      success: true,
+      data: response.data.data ?? [],
+    };
+  } catch (error) {
+    console.error("Error fetching weekly activity:", error);
+    return handleError(error, "Failed to load weekly activity");
+  }
+};
+
 export const getAdminContentDetail = async (id) => {
   try {
     const response = await api.get(`/admin/content/${id}`);

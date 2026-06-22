@@ -18,11 +18,6 @@ export function invalidatePlannerWeek(queryClient, weekStartDate) {
 }
 
 /** @param {import('@tanstack/react-query').QueryClient} queryClient */
-export function invalidateNotes(queryClient) {
-  return queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
-}
-
-/** @param {import('@tanstack/react-query').QueryClient} queryClient */
 export function invalidateSubjects(queryClient) {
   return queryClient.invalidateQueries({ queryKey: queryKeys.subjects.all });
 }

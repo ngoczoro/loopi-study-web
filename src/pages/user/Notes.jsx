@@ -10,7 +10,6 @@ import {
   Trash2,
   Eye,
   Edit3,
-  Sparkles,
   Loader2,
   Brain,
 } from "lucide-react";
@@ -18,9 +17,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useAppStore } from "@/lib/store";
 import { useAuthStore } from "@/lib/authStore";
 import { toast } from "sonner";
-import {
-  suggestMaterials,
-} from "@/lib/ai-utils";
 import AIDocumentSummary from "@/components/ai/AIDocumentSummary";
 import AIDocumentSearchPanel from "@/components/ai/AIDocumentSearchPanel";
 import AIQuizGenerator from "@/components/ai/AIQuizGenerator";
@@ -89,11 +85,6 @@ export default function Notes() {
 
   const [deleteId, setDeleteId] = useState(null);
   const [quizTargetDoc, setQuizTargetDoc] = useState(null);
-
-  const [aiLoading, setAiLoading] = useState(null);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [suggestions, setSuggestions] = useState([]);
-  const [suggestSubjectId, setSuggestSubjectId] = useState("");
 
   useEffect(() => {
     if (!accessToken) return;
@@ -298,41 +289,6 @@ export default function Notes() {
     setViewDoc(null);
   };
 
-  const handleSuggestMaterials = () => {
-    const subjectName =
-      subjects.find((s) => s.id === suggestSubjectId)?.name || "General Study";
-
-    setAiLoading("suggest");
-
-    setTimeout(() => {
-      setSuggestions(suggestMaterials(subjectName));
-      setAiLoading(null);
-    }, 800);
-  };
-
-  const handleAddSuggestion = async (sug) => {
-    const subjectId = normalizeSubjectId(suggestSubjectId);
-
-    const result =
-      sug.type === "link"
-        ? await createContentLink({
-            title: sug.title,
-            content: sug.content,
-            subjectId,
-          })
-        : await createContentNote({
-            title: sug.title,
-            content: sug.content,
-            subjectId,
-          });
-
-    if (result.ok) {
-      toast.success("Suggestion added");
-    } else {
-      toast.error(result.message || "Failed to add suggestion");
-    }
-  };
-
   const tabs = [
     { key: "file", label: "Upload File", icon: Upload },
     { key: "note", label: "Write Note", icon: PenLine },
@@ -354,12 +310,6 @@ export default function Notes() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowSuggestions(true)}
-            className="inline-flex items-center gap-2 h-10 px-4 rounded-full bg-secondary text-secondary-foreground font-medium text-sm hover:bg-secondary/80 transition-colors"
-          >
-            <Sparkles className="h-4 w-4" strokeWidth={1.5} /> AI Suggest
-          </button>
           <button
             onClick={() => setShowAdd(true)}
             className="inline-flex items-center gap-2 h-10 px-5 rounded-full bg-primary text-primary-foreground font-medium text-sm shadow-soft-md hover:scale-[1.02] active:scale-[0.98] transition-transform"
@@ -575,11 +525,10 @@ export default function Notes() {
                 <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={() => setQuizTargetDoc(viewDoc)}
-                    disabled={!!aiLoading}
-                    className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
                   >
                     <Brain className="h-3.5 w-3.5" />
-                    Tạo Quiz bằng AI
+                    Generate Quiz with AI
                   </button>
                 </div>
               </div>
@@ -893,105 +842,6 @@ export default function Notes() {
                     </>
                   )}
                 </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showSuggestions && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center">
-            <div
-              className="absolute inset-0 bg-foreground/20 backdrop-blur-sm"
-              onClick={() => {
-                setShowSuggestions(false);
-                setSuggestions([]);
-              }}
-            />
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="relative bg-card rounded-2xl p-6 shadow-soft-lg w-full max-w-md z-10"
-            >
-              <button
-                onClick={() => {
-                  setShowSuggestions(false);
-                  setSuggestions([]);
-                }}
-                className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <Sparkles className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-display font-semibold text-foreground">
-                    AI Suggest Materials
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    Get AI-recommended study materials
-                  </p>
-                </div>
-              </div>
-              <div className="space-y-3">
-                <select
-                  value={suggestSubjectId}
-                  onChange={(e) => setSuggestSubjectId(e.target.value)}
-                  className="w-full h-10 rounded-xl bg-background px-3 text-sm text-foreground border border-border outline-none"
-                >
-                  <option value="">Select a subject</option>
-                  {subjects.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-                {suggestions.length === 0 ? (
-                  <button
-                    onClick={handleSuggestMaterials}
-                    disabled={!suggestSubjectId || aiLoading === "suggest"}
-                    className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {aiLoading === "suggest" ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />{" "}
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4" /> Get Suggestions
-                      </>
-                    )}
-                  </button>
-                ) : (
-                  <div className="space-y-2">
-                    {suggestions.map((sug, i) => (
-                      <div
-                        key={i}
-                        className="bg-secondary/40 rounded-xl p-3 flex items-start justify-between gap-2"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-foreground">
-                            {sug.title}
-                          </p>
-                          <p className="text-[11px] text-muted-foreground truncate">
-                            {sug.content}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => handleAddSuggestion(sug)}
-                          className="shrink-0 h-7 px-3 rounded-full bg-primary text-primary-foreground text-[11px] font-medium hover:scale-[1.02] transition-transform"
-                        >
-                          + Add
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </motion.div>
           </div>

@@ -11,10 +11,10 @@ import {
 } from "@/services/aiService";
 
 const DIFFICULTY_OPTIONS = [
-  { value: "mixed", label: "Mix nhiều mức độ" },
-  { value: "easy", label: "Dễ" },
-  { value: "medium", label: "Trung bình" },
-  { value: "hard", label: "Khó" },
+  { value: "mixed", label: "Mixed difficulty" },
+  { value: "easy", label: "Easy" },
+  { value: "medium", label: "Medium" },
+  { value: "hard", label: "Hard" },
 ];
 
 const QUESTION_COUNT_OPTIONS = [5, 10, 15, 20];
@@ -52,7 +52,7 @@ export default function AIQuizGenerator({
     setLoading(false);
 
     if (!result.success) {
-      toast.error(result.message || "Không thể tạo quiz bằng AI");
+      toast.error(result.message || "Could not generate quiz with AI");
       return;
     }
 
@@ -62,7 +62,7 @@ export default function AIQuizGenerator({
     });
 
     onQuizCreated?.(quiz);
-    toast.success("Quiz AI đã được tạo thành công");
+    toast.success("AI quiz created successfully");
     onOpenChange(false);
     navigate("/quiz", { state: { activeQuizId: quiz.id } });
   };
@@ -91,27 +91,27 @@ export default function AIQuizGenerator({
           </div>
           <div>
             <h2 className="text-lg font-display font-semibold text-foreground">
-              Tạo Quiz bằng AI
+              Generate Quiz with AI
             </h2>
             <p className="text-xs text-muted-foreground truncate max-w-[240px]">
-              {documentTitle || "Tài liệu"}
+              {documentTitle || "Document"}
             </p>
           </div>
         </div>
 
         {!supported ? (
           <p className="text-sm text-muted-foreground">
-            Loại tài liệu này chưa hỗ trợ tạo quiz bằng AI.
+            This document type does not support AI quiz generation yet.
           </p>
         ) : (
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground">
-              Mỗi lần tạo sẽ sinh một bộ câu hỏi mới dựa trên tài liệu đã chọn.
+              Each generation creates a new question set from the selected document.
             </p>
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">
-                Độ khó
+                Difficulty
               </label>
               <select
                 value={difficulty}
@@ -129,7 +129,7 @@ export default function AIQuizGenerator({
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">
-                Số câu hỏi
+                Number of questions
               </label>
               <select
                 value={numberOfQuestions}
@@ -141,7 +141,7 @@ export default function AIQuizGenerator({
               >
                 {QUESTION_COUNT_OPTIONS.map((count) => (
                   <option key={count} value={count}>
-                    {count} câu
+                    {count} questions
                   </option>
                 ))}
               </select>
@@ -156,12 +156,12 @@ export default function AIQuizGenerator({
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Đang tạo quiz...
+                  Generating quiz...
                 </>
               ) : (
                 <>
                   <Brain className="h-4 w-4" />
-                  Tạo Quiz bằng AI
+                  Generate Quiz with AI
                 </>
               )}
             </button>

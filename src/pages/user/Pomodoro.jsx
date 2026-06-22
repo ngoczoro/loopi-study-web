@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Timer, X } from "lucide-react";
 import { useSubjects } from "@/hooks/useSubjects";
@@ -15,6 +15,7 @@ import { FOCUS_MAX_WORK_MINUTES } from "@/lib/focusTimerUtils";
 import { normalizeTaskSubjectId } from "@/lib/task-utils";
 import { toast } from "sonner";
 import { createFocusSessionAPI } from "@/services/focusSessionService";
+import { getPreferences } from "@/services/userService";
 
 const DEFAULT_WORK_MINUTES = 25;
 
@@ -76,6 +77,31 @@ function SetupModal({ initialSubjectId, onClose, onStarted }) {
   const [notes, setNotes] = useState("");
   const [subjectId, setSubjectId] = useState(initialSubjectId || "none");
   const [loading, setLoading] = useState(false);
+  const [prefsLoading, setPrefsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const result = await getPreferences();
+      if (cancelled) return;
+
+      if (result.success) {
+        setWorkMinutes(result.data.pomodoroDuration ?? DEFAULT_WORK_MINUTES);
+        const breakDuration = result.data.breakDuration;
+        setBreakMinutes(
+          breakDuration != null && breakDuration !== ""
+            ? String(breakDuration)
+            : "",
+        );
+      }
+      setPrefsLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleStartSession = async () => {
     const plannedWorkMinutes = Math.min(
@@ -193,11 +219,11 @@ function SetupModal({ initialSubjectId, onClose, onStarted }) {
 
         <button
           type="button"
-          disabled={loading}
+          disabled={loading || prefsLoading}
           onClick={handleStartSession}
           className="w-full h-11 rounded-full bg-primary text-primary-foreground font-medium text-sm disabled:opacity-50"
         >
-          {loading ? "Starting…" : "Start Session"}
+          {loading ? "Starting…" : prefsLoading ? "Loading…" : "Start Session"}
         </button>
       </div>
     </div>

@@ -154,7 +154,7 @@ export default function AdminProfile() {
           Account Management
         </h1>
         <p className="text-sm text-muted-foreground">
-          Quản lý tài khoản admin
+          Manage your admin account
         </p>
       </div>
 

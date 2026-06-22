@@ -19,13 +19,13 @@ export const queryKeys = {
       planner: (params = {}) => ["focus", "analytics", "planner", params],
     },
   },
+  goals: {
+    all: (params = {}) => ["goals", params],
+  },
   progress: {
     summary: ["progress", "summary"],
     streaks: ["progress", "streaks"],
     milestones: ["progress", "milestones"],
-  },
-  notes: {
-    all: ["notes"],
   },
   user: {
     profile: ["user", "profile"],

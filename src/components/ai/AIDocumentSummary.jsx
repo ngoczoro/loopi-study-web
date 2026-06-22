@@ -25,7 +25,7 @@ const formatGeneratedAt = (value) => {
   try {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "—";
-    return date.toLocaleString("vi-VN", {
+    return date.toLocaleString("en-US", {
       dateStyle: "medium",
       timeStyle: "short",
     });
@@ -61,7 +61,7 @@ export default function AIDocumentSummary({ documentId, documentTitle, document 
       return;
     }
 
-    toast.error(result.message || "Không thể tải tóm tắt AI");
+    toast.error(result.message || "Could not load AI summary");
   }, [documentId, supported]);
 
   useEffect(() => {
@@ -79,12 +79,12 @@ export default function AIDocumentSummary({ documentId, documentTitle, document 
     if (result.success) {
       setSummary(result.data);
       toast.success(
-        forceRegenerate ? "Đã tạo lại tóm tắt AI" : "Tóm tắt AI đã sẵn sàng",
+        forceRegenerate ? "AI summary regenerated" : "AI summary is ready",
       );
       return;
     }
 
-    toast.error(result.message || "Không thể tạo tóm tắt AI");
+    toast.error(result.message || "Could not generate AI summary");
   };
 
   if (!documentId) return null;
@@ -92,9 +92,9 @@ export default function AIDocumentSummary({ documentId, documentTitle, document 
   if (!supported) {
     return (
       <div className="mt-4 rounded-2xl border border-border/50 bg-secondary/20 p-4">
-        <p className="text-sm font-semibold text-foreground">Tóm tắt bằng AI</p>
+        <p className="text-sm font-semibold text-foreground">AI Summary</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Loại tài liệu này chưa hỗ trợ tóm tắt AI.
+          This document type does not support AI summary yet.
         </p>
       </div>
     );
@@ -107,10 +107,10 @@ export default function AIDocumentSummary({ documentId, documentTitle, document 
       <div>
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" strokeWidth={1.5} />
-          Tóm tắt bằng AI
+          AI Summary
         </h3>
         <p className="text-xs text-muted-foreground mt-1">
-          Tóm tắt tài liệu thành các ý chính và ghi chú học tập
+          Summarize this document into key points and study notes
           {documentTitle ? `: ${documentTitle}` : ""}.
         </p>
       </div>
@@ -125,7 +125,7 @@ export default function AIDocumentSummary({ documentId, documentTitle, document 
         <div className="space-y-4">
           <div>
             <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-2">
-              Tóm tắt
+              Summary
             </p>
             <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
               {summary.summary}
@@ -135,7 +135,7 @@ export default function AIDocumentSummary({ documentId, documentTitle, document 
           {summary.keyPoints?.length > 0 ? (
             <div>
               <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-2">
-                Ý chính
+                Key points
               </p>
               <ul className="space-y-1.5 text-sm text-foreground list-disc pl-5">
                 {summary.keyPoints.map((point, index) => (
@@ -148,7 +148,7 @@ export default function AIDocumentSummary({ documentId, documentTitle, document 
           {summary.learningNotes?.length > 0 ? (
             <div>
               <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-2">
-                Ghi chú học tập
+                Study notes
               </p>
               <ul className="space-y-1.5 text-sm text-foreground list-disc pl-5">
                 {summary.learningNotes.map((note, index) => (
@@ -161,7 +161,7 @@ export default function AIDocumentSummary({ documentId, documentTitle, document 
           {summary.keywords?.length > 0 ? (
             <div>
               <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-2">
-                Từ khóa
+                Keywords
               </p>
               <div className="flex flex-wrap gap-2">
                 {summary.keywords.map((keyword, index) => (
@@ -177,7 +177,7 @@ export default function AIDocumentSummary({ documentId, documentTitle, document 
           ) : null}
 
           <div className="text-xs text-muted-foreground space-y-1 pt-1 border-t border-border/40">
-            <p>Tạo lúc: {formatGeneratedAt(summary.generatedAt)}</p>
+            <p>Generated: {formatGeneratedAt(summary.generatedAt)}</p>
             {summary.model ? <p>Model: {summary.model}</p> : null}
           </div>
 
@@ -190,16 +190,16 @@ export default function AIDocumentSummary({ documentId, documentTitle, document 
             {loadingGenerate ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Đang tạo tóm tắt...
+                Generating summary...
               </>
             ) : (
-              "Tạo lại tóm tắt"
+              "Regenerate summary"
             )}
           </button>
         </div>
       ) : (
         <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">Tóm tắt chưa được tạo.</p>
+          <p className="text-sm text-muted-foreground">No summary generated yet.</p>
           <button
             type="button"
             onClick={() => handleGenerate(false)}
@@ -209,12 +209,12 @@ export default function AIDocumentSummary({ documentId, documentTitle, document 
             {loadingGenerate ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Đang tạo tóm tắt...
+                Generating summary...
               </>
             ) : (
               <>
                 <Sparkles className="h-3.5 w-3.5" />
-                Tạo tóm tắt AI
+                Generate AI Summary
               </>
             )}
           </button>
@@ -224,22 +224,22 @@ export default function AIDocumentSummary({ documentId, documentTitle, document 
       <AlertDialog open={regenerateOpen} onOpenChange={setRegenerateOpen}>
         <AlertDialogContent className="rounded-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>Tạo lại tóm tắt AI?</AlertDialogTitle>
+            <AlertDialogTitle>Regenerate AI summary?</AlertDialogTitle>
             <AlertDialogDescription>
-              Hành động này sẽ gọi lại AI và có thể tốn thêm tín dụng. Bạn có
-              muốn tiếp tục không?
+              This will call AI again and may use additional credits. Do you want
+              to continue?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-full" disabled={loadingGenerate}>
-              Hủy
+              Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => handleGenerate(true)}
               disabled={loadingGenerate}
               className="rounded-full"
             >
-              {loadingGenerate ? "Đang tạo..." : "Tạo lại"}
+              {loadingGenerate ? "Generating..." : "Regenerate"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

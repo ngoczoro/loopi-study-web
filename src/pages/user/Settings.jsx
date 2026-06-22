@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { User, Lock, Bell, Calendar, BookOpen } from "lucide-react";
+import { User, Lock, Bell, Calendar, BookOpen, Timer } from "lucide-react";
 import loopyHappy from "@/assets/loopy-happy.png";
 import { useAuthStore } from "@/lib/authStore";
 import {
@@ -46,6 +46,9 @@ export default function Settings() {
   const [maxStudyHoursPerDay, setMaxStudyHoursPerDay] = useState(4);
   const [maxStudyHoursError, setMaxStudyHoursError] = useState("");
   const [savingPlannerPrefs, setSavingPlannerPrefs] = useState(false);
+  const [pomodoroDuration, setPomodoroDuration] = useState(25);
+  const [pomodoroDurationError, setPomodoroDurationError] = useState("");
+  const [savingFocusPrefs, setSavingFocusPrefs] = useState(false);
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -73,6 +76,8 @@ export default function Settings() {
         );
         setMaxStudyHoursPerDay(prefsRes.data.maxStudyHoursPerDay ?? 4);
         setMaxStudyHoursError("");
+        setPomodoroDuration(prefsRes.data.pomodoroDuration ?? 25);
+        setPomodoroDurationError("");
       } else {
         toast.error(prefsRes.message);
       }
@@ -221,6 +226,52 @@ export default function Settings() {
     }
   };
 
+  const validatePomodoroDuration = (value) => {
+    if (value === "" || value == null || Number.isNaN(Number(value))) {
+      return "Please enter a focus session duration.";
+    }
+    const minutes = Number(value);
+    if (minutes < 1) {
+      return "The minimum focus duration is 1 minute.";
+    }
+    if (minutes > 180) {
+      return "The maximum focus duration is 180 minutes.";
+    }
+    return "";
+  };
+
+  const handlePomodoroDurationChange = (rawValue) => {
+    setPomodoroDuration(rawValue);
+    if (rawValue === "" || rawValue == null) {
+      setPomodoroDurationError("Please enter a focus session duration.");
+      return;
+    }
+    setPomodoroDurationError(validatePomodoroDuration(rawValue));
+  };
+
+  const handleSaveFocusPreferences = async () => {
+    const error = validatePomodoroDuration(pomodoroDuration);
+    if (error) {
+      setPomodoroDurationError(error);
+      toast.error(error);
+      return;
+    }
+
+    setSavingFocusPrefs(true);
+    const result = await updatePreferences({
+      pomodoroDuration: Number(pomodoroDuration),
+    });
+    setSavingFocusPrefs(false);
+
+    if (result.success) {
+      setPomodoroDuration(result.data.pomodoroDuration ?? 25);
+      setPomodoroDurationError("");
+      toast.success("Focus timer settings saved successfully!");
+    } else {
+      toast.error(result.message);
+    }
+  };
+
   const handleToggleNotification = async (key) => {
     const updated = {
       ...notificationSettings,
@@ -364,6 +415,52 @@ export default function Settings() {
             value={notificationSettings.sessionReminders ?? true}
             onChange={() => handleToggleNotification("sessionReminders")}
           />
+        </div>
+      </div>
+
+      {/* Focus Timer */}
+      <div className="bg-card rounded-2xl p-5 shadow-soft">
+        <h2 className="text-base font-semibold text-foreground mb-4 flex items-center gap-2">
+          <Timer className="h-4 w-4 text-primary" strokeWidth={1.5} /> Focus Timer
+        </h2>
+        <div className="space-y-3">
+          <div>
+            <label
+              htmlFor="pomodoro-duration"
+              className="text-sm font-medium text-foreground"
+            >
+              Default Focus Duration
+            </label>
+            <p className="text-xs text-muted-foreground mt-1 mb-2">
+              Used as the default work length when you start a new focus session.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                id="pomodoro-duration"
+                type="number"
+                min={1}
+                max={180}
+                step={1}
+                value={pomodoroDuration}
+                onChange={(e) => handlePomodoroDurationChange(e.target.value)}
+                className={`w-24 h-10 rounded-xl bg-background px-3 text-sm text-foreground border focus:ring-2 focus:ring-primary/20 outline-none ${
+                  pomodoroDurationError ? "border-destructive" : "border-border"
+                }`}
+              />
+              <span className="text-sm text-muted-foreground">minutes</span>
+            </div>
+            {pomodoroDurationError ? (
+              <p className="text-xs text-destructive mt-1">{pomodoroDurationError}</p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={handleSaveFocusPreferences}
+            disabled={savingFocusPrefs || Boolean(pomodoroDurationError)}
+            className="h-10 px-5 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform disabled:opacity-50"
+          >
+            {savingFocusPrefs ? "Saving…" : "Save Preferences"}
+          </button>
         </div>
       </div>
 

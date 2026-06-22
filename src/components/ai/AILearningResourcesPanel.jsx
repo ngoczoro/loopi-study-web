@@ -24,11 +24,11 @@ import {
 } from "@/services/aiService";
 
 const TYPE_LABELS = {
-  documentation: "Tài liệu",
-  article: "Bài viết",
+  documentation: "Documentation",
+  article: "Article",
   video: "Video",
-  course: "Khóa học",
-  tutorial: "Hướng dẫn",
+  course: "Course",
+  tutorial: "Tutorial",
 };
 
 const TYPE_BADGE_CLASS = {
@@ -86,7 +86,7 @@ function SidebarSection({
           itemCount={itemCount}
           maxHeightClass={LEARNING_RESOURCE_SCROLL_MAX}
           listClassName={listClassName}
-          scrollHint="Cuộn để xem thêm"
+          scrollHint="Scroll for more"
           visibleItems={VISIBLE_SIDEBAR_ITEMS}
         >
           {children}

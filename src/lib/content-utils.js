@@ -2,7 +2,7 @@ export const MAX_FILE_SIZE = 5 * 1024 * 1024;
 export const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE;
 
 export const FILE_SIZE_LIMIT_MESSAGE =
-  "File vượt quá 5MB, không được phép upload.";
+  "File exceeds 5MB and cannot be uploaded.";
 
 export const ALLOWED_FILE_MIME_TYPES = [
   "application/pdf",

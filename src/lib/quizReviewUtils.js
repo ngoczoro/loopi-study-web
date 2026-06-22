@@ -41,9 +41,9 @@ export const normalizeDurationSeconds = (rawSeconds) => {
 };
 
 export const getScoreLabel = (percentage) => {
-  if (percentage >= 80) return "Rất tốt";
-  if (percentage >= 50) return "Đạt";
-  return "Cần ôn lại";
+  if (percentage >= 80) return "Excellent";
+  if (percentage >= 50) return "Pass";
+  return "Needs review";
 };
 
 export const getScoreBadgeClass = (percentage) => {
@@ -55,7 +55,7 @@ export const getScoreBadgeClass = (percentage) => {
 export const formatDurationVi = (seconds) => {
   const normalized = normalizeDurationSeconds(seconds);
   if (normalized == null) {
-    return "Không có dữ liệu thời gian";
+    return "No time data";
   }
 
   const hours = Math.floor(normalized / 3600);
@@ -63,14 +63,14 @@ export const formatDurationVi = (seconds) => {
   const remainSeconds = normalized % 60;
 
   if (hours > 0) {
-    return `${hours} giờ ${minutes} phút`;
+    return `${hours}h ${minutes}m`;
   }
 
   if (minutes === 0) {
-    return `${remainSeconds} giây`;
+    return `${remainSeconds}s`;
   }
 
-  return `${minutes} phút${remainSeconds > 0 ? ` ${remainSeconds} giây` : ""}`;
+  return `${minutes}m${remainSeconds > 0 ? ` ${remainSeconds}s` : ""}`;
 };
 
 export const formatSubmittedAtVi = (value) => {
@@ -79,7 +79,7 @@ export const formatSubmittedAtVi = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
 
-  return date.toLocaleString("vi-VN", {
+  return date.toLocaleString("en-US", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -98,11 +98,11 @@ export const getOptionText = (options, index) => {
 
 export const formatAnswerLine = (letter, optionText) => {
   if (!letter && optionText == null) {
-    return "Chưa trả lời";
+    return "Not answered";
   }
 
   if (optionText == null || optionText === "") {
-    return letter ? `${letter}. —` : "Chưa trả lời";
+    return letter ? `${letter}. —` : "Not answered";
   }
 
   return `${letter}. ${optionText}`;

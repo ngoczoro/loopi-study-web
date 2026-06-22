@@ -35,6 +35,7 @@ import {
   getSavedLearningResources,
   mapGeneratedQuizForStore,
 } from "@/services/aiService";
+import { reportViolation } from "@/services/violationService";
 import AILearningResourcesPanel from "@/components/ai/AILearningResourcesPanel";
 import AIDocumentSummary from "@/components/ai/AIDocumentSummary";
 import AIDocumentSearchPanel from "@/components/ai/AIDocumentSearchPanel";
@@ -113,7 +114,6 @@ export default function Subjects() {
     addQuiz,
     fetchQuizzes,
     upsertQuiz,
-    addViolation,
   } = useAppStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -284,16 +284,11 @@ export default function Subjects() {
     }
     const mod = moderateContent(aiTopic);
     if (mod?.flagged) {
-      addViolation({
-        userId: "u1",
-        userName: "Student",
-        userEmail: "student@example.com",
+      void reportViolation({
         type: mod.type,
-        contentId: "",
-        contentTitle: aiTopic,
-        contentType: "note",
-        detectedAt: new Date().toLocaleString(),
-        resolved: false,
+        severity: mod.severity,
+        contentTitle: aiTopic.trim(),
+        contentType: "quiz",
       });
       toast.error("Content flagged for moderation.");
       return;
@@ -309,7 +304,7 @@ export default function Subjects() {
     setAiLoading(false);
 
     if (!result.success) {
-      toast.error(result.message || "Không thể tạo quiz bằng AI");
+      toast.error(result.message || "Could not generate quiz with AI");
       return;
     }
 
@@ -1077,7 +1072,7 @@ export default function Subjects() {
                           />
                         </div>
                         <span className="text-sm font-semibold text-foreground">
-                          Tìm trong tài liệu môn học
+                          Document Search
                         </span>
                       </div>
                     </AccordionTrigger>
@@ -1246,7 +1241,7 @@ export default function Subjects() {
                   className="inline-flex items-center justify-center gap-1.5 flex-1 h-10 rounded-full bg-primary/10 text-primary text-sm font-medium hover:bg-primary/20 transition-colors"
                 >
                   <Brain className="h-4 w-4" />
-                  Tạo Quiz bằng AI
+                  Generate Quiz with AI
                 </button>
               </div>
 
@@ -1833,10 +1828,10 @@ export default function Subjects() {
                     disabled={aiLoading}
                     className="w-full h-10 rounded-xl bg-background px-3 text-sm text-foreground border border-border outline-none disabled:opacity-50"
                   >
-                    <option value="mixed">Mix nhiều mức độ</option>
-                    <option value="easy">Dễ</option>
-                    <option value="medium">Trung bình</option>
-                    <option value="hard">Khó</option>
+                    <option value="mixed">Mixed difficulty</option>
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
                   </select>
                   <select
                     value={aiNumberOfQuestions}
@@ -1848,7 +1843,7 @@ export default function Subjects() {
                   >
                     {[5, 10, 15, 20].map((count) => (
                       <option key={count} value={count}>
-                        {count} câu
+                        {count} questions
                       </option>
                     ))}
                   </select>

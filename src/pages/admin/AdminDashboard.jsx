@@ -17,6 +17,7 @@ import { formatAdminUserDate } from "@/lib/adminUserUtils";
 import {
   getDashboardStats,
   getRecentContent,
+  getWeeklyActivity,
 } from "@/services/adminDashboardService";
 
 const chartConfig = {
@@ -27,16 +28,6 @@ const chartConfig = {
 const RECENT_CONTENT_LIMIT = 15;
 const RECENT_CONTENT_SCROLL_THRESHOLD = 5;
 
-const weeklyData = [
-  { day: "Mon", sessions: 4, students: 3 },
-  { day: "Tue", sessions: 6, students: 5 },
-  { day: "Wed", sessions: 3, students: 2 },
-  { day: "Thu", sessions: 7, students: 4 },
-  { day: "Fri", sessions: 5, students: 6 },
-  { day: "Sat", sessions: 2, students: 1 },
-  { day: "Sun", sessions: 1, students: 1 },
-];
-
 const typeLabel = {
   note: "Note",
   file: "File",
@@ -46,24 +37,31 @@ const typeLabel = {
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
+  const [weeklyData, setWeeklyData] = useState([]);
   const [recentContent, setRecentContent] = useState([]);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [loadingWeekly, setLoadingWeekly] = useState(true);
   const [loadingRecent, setLoadingRecent] = useState(true);
   const [statsError, setStatsError] = useState(null);
+  const [weeklyError, setWeeklyError] = useState(null);
   const [recentError, setRecentError] = useState(null);
 
   const loadDashboard = useCallback(async () => {
     setLoadingStats(true);
+    setLoadingWeekly(true);
     setLoadingRecent(true);
     setStatsError(null);
+    setWeeklyError(null);
     setRecentError(null);
 
-    const [statsResult, recentResult] = await Promise.all([
+    const [statsResult, weeklyResult, recentResult] = await Promise.all([
       getDashboardStats(),
+      getWeeklyActivity(),
       getRecentContent({ limit: RECENT_CONTENT_LIMIT }),
     ]);
 
     setLoadingStats(false);
+    setLoadingWeekly(false);
     setLoadingRecent(false);
 
     if (statsResult.success) {
@@ -71,6 +69,12 @@ export default function AdminDashboard() {
     } else {
       setStatsError(statsResult.message || "Failed to load stats");
       toast.error(statsResult.message || "Failed to load dashboard stats");
+    }
+
+    if (weeklyResult.success) {
+      setWeeklyData(weeklyResult.data);
+    } else {
+      setWeeklyError(weeklyResult.message || "Failed to load weekly activity");
     }
 
     if (recentResult.success) {
@@ -88,6 +92,10 @@ export default function AdminDashboard() {
   const activeStudents = stats?.activeStudents ?? 0;
   const lockedStudents = stats?.lockedStudents ?? 0;
   const totalSubjects = stats?.totalSubjects ?? 0;
+  const weeklySessionTotal = weeklyData.reduce(
+    (sum, day) => sum + (day.sessions ?? 0),
+    0,
+  );
 
   const activeRate =
     totalStudents > 0
@@ -109,7 +117,7 @@ export default function AdminDashboard() {
     },
     {
       label: "Study Sessions",
-      value: weeklyData.reduce((sum, d) => sum + d.sessions, 0),
+      value: loadingWeekly ? "—" : weeklySessionTotal,
       icon: CalendarDays,
       color: "bg-secondary text-secondary-foreground",
     },
@@ -185,6 +193,8 @@ export default function AdminDashboard() {
                 <p className="text-xs text-muted-foreground">{s.label}</p>
                 {loadingStats && s.label !== "Study Sessions" ? (
                   <Skeleton className="h-7 w-12 mt-1" />
+                ) : loadingWeekly && s.label === "Study Sessions" ? (
+                  <Skeleton className="h-7 w-12 mt-1" />
                 ) : (
                   <p className="text-xl font-bold text-foreground">{s.value}</p>
                 )}
@@ -199,23 +209,40 @@ export default function AdminDashboard() {
           <h2 className="text-sm font-semibold text-foreground mb-4">
             Weekly Activity
           </h2>
-          <ChartContainer config={chartConfig} className="h-[250px] w-full">
-            <BarChart data={weeklyData}>
-              <XAxis dataKey="day" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar
-                dataKey="sessions"
-                fill="hsl(var(--primary))"
-                radius={[6, 6, 0, 0]}
-              />
-              <Bar
-                dataKey="students"
-                fill="hsl(var(--accent))"
-                radius={[6, 6, 0, 0]}
-              />
-            </BarChart>
-          </ChartContainer>
+          {loadingWeekly ? (
+            <div className="flex items-center justify-center h-[250px]">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : weeklyError ? (
+            <div className="flex flex-col items-center justify-center h-[250px] gap-2 text-center">
+              <p className="text-sm text-destructive">{weeklyError}</p>
+              <button
+                type="button"
+                onClick={loadDashboard}
+                className="text-xs font-medium text-primary underline"
+              >
+                Retry
+              </button>
+            </div>
+          ) : (
+            <ChartContainer config={chartConfig} className="h-[250px] w-full">
+              <BarChart data={weeklyData}>
+                <XAxis dataKey="day" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar
+                  dataKey="sessions"
+                  fill="hsl(var(--primary))"
+                  radius={[6, 6, 0, 0]}
+                />
+                <Bar
+                  dataKey="students"
+                  fill="hsl(var(--accent))"
+                  radius={[6, 6, 0, 0]}
+                />
+              </BarChart>
+            </ChartContainer>
+          )}
         </div>
 
         <div className="bg-card rounded-2xl p-5 shadow-soft">

@@ -8,13 +8,13 @@ export default function QuizWeakTopicsCard({ weakTopics = [] }) {
       <div className="flex items-center gap-2 mb-3">
         <BookOpen className="h-4 w-4 text-primary" />
         <h2 className="text-sm font-semibold text-foreground">
-          Chủ đề nên ôn lại
+          Topics to review
         </h2>
       </div>
 
       {topics.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Bạn đã làm rất tốt! Không có chủ đề yếu nổi bật.
+          Great job! No weak topics stand out.
         </p>
       ) : (
         <ul className="space-y-2">

@@ -33,7 +33,7 @@ export default function QuizReviewQuestionCard({
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <p className="text-xs font-medium text-muted-foreground mb-1">
-            Câu {questionIndex + 1}
+            Question {questionIndex + 1}
           </p>
           <p className="text-sm font-semibold text-foreground">{question}</p>
         </div>
@@ -49,12 +49,12 @@ export default function QuizReviewQuestionCard({
           {isCorrect ? (
             <>
               <CheckCircle2 className="h-3.5 w-3.5" />
-              Đúng
+              Correct
             </>
           ) : (
             <>
               <XCircle className="h-3.5 w-3.5" />
-              Sai
+              Incorrect
             </>
           )}
         </span>
@@ -63,7 +63,7 @@ export default function QuizReviewQuestionCard({
       <div className="space-y-3 text-sm">
         <div>
           <p className="text-xs font-medium text-muted-foreground mb-1">
-            Bạn chọn:
+            Your answer:
           </p>
           <p
             className={cn(
@@ -78,7 +78,7 @@ export default function QuizReviewQuestionCard({
         {!isCorrect && (
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-1">
-              Đáp án đúng:
+              Correct answer:
             </p>
             <p className="rounded-xl px-3 py-2 bg-accent/10 text-foreground">
               {formatAnswerLine(correctAnswer, correctText)}
@@ -88,19 +88,19 @@ export default function QuizReviewQuestionCard({
 
         <div>
           <p className="text-xs font-medium text-muted-foreground mb-1">
-            Giải thích:
+            Explanation:
           </p>
           <p className="rounded-xl px-3 py-2 bg-secondary/40 text-foreground text-sm leading-relaxed whitespace-pre-line">
-            {explanation?.trim() || "Chưa có giải thích cho câu hỏi này."}
+            {explanation?.trim() || "No explanation available for this question."}
           </p>
         </div>
 
         <div>
           <p className="text-xs font-medium text-muted-foreground mb-1">
-            Chủ đề:
+            Topic:
           </p>
           <p className="text-sm text-foreground">
-            {sourceTopic?.trim() || "Chủ đề chưa xác định"}
+            {sourceTopic?.trim() || "Topic not specified"}
           </p>
         </div>
       </div>

@@ -1,16 +1,34 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Bell, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { useAdminDemoStore } from "@/lib/adminDemoStore";
+import { useAdminViolations } from "@/hooks/queries/adminViolations";
+import {
+  getSeenViolationIds,
+  mapPendingViolationsToNotifications,
+  markViolationSeen,
+} from "@/lib/adminViolationNotifications";
+
+const PENDING_VIOLATIONS_PARAMS = {
+  page: 1,
+  limit: 50,
+  resolved: "pending",
+};
 
 export function AdminNotificationDropdown() {
   const [open, setOpen] = useState(false);
+  const [seenIds, setSeenIds] = useState(() => getSeenViolationIds());
   const ref = useRef(null);
   const navigate = useNavigate();
 
-  const { adminNotifications = [], markAdminNotificationRead } =
-    useAdminDemoStore();
+  const { flaggedUsers, isLoading, refetch } = useAdminViolations(
+    PENDING_VIOLATIONS_PARAMS,
+  );
+
+  const adminNotifications = useMemo(
+    () => mapPendingViolationsToNotifications(flaggedUsers, seenIds),
+    [flaggedUsers, seenIds],
+  );
   const unreadCount = adminNotifications.filter((n) => n.unread).length;
 
   useEffect(() => {
@@ -24,8 +42,15 @@ export function AdminNotificationDropdown() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  useEffect(() => {
+    if (open) {
+      refetch();
+    }
+  }, [open, refetch]);
+
   const handleClick = (notif) => {
-    markAdminNotificationRead(notif.id);
+    markViolationSeen(notif.id);
+    setSeenIds(getSeenViolationIds());
     setOpen(false);
     navigate("/admin/warnings");
   };
@@ -67,46 +92,56 @@ export function AdminNotificationDropdown() {
             </div>
 
             <div className="max-h-72 overflow-auto">
-              {adminNotifications.map((n) => (
-                <button
-                  key={n.id}
-                  onClick={() => handleClick(n)}
-                  className={`w-full flex items-start gap-3 p-3 text-left hover:bg-secondary/40 transition-colors ${
-                    n.unread ? "bg-destructive/5" : ""
-                  }`}
-                >
-                  <div
-                    className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${
-                      n.unread ? "bg-destructive/15" : "bg-secondary"
+              {isLoading && adminNotifications.length === 0 ? (
+                <p className="p-4 text-xs text-muted-foreground text-center">
+                  Loading alerts...
+                </p>
+              ) : adminNotifications.length === 0 ? (
+                <p className="p-4 text-xs text-muted-foreground text-center">
+                  No pending violations
+                </p>
+              ) : (
+                adminNotifications.map((n) => (
+                  <button
+                    key={n.id}
+                    onClick={() => handleClick(n)}
+                    className={`w-full flex items-start gap-3 p-3 text-left hover:bg-secondary/40 transition-colors ${
+                      n.unread ? "bg-destructive/5" : ""
                     }`}
                   >
-                    <AlertTriangle
-                      className={`h-3.5 w-3.5 ${
-                        n.unread ? "text-destructive" : "text-muted-foreground"
+                    <div
+                      className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${
+                        n.unread ? "bg-destructive/15" : "bg-secondary"
                       }`}
-                      strokeWidth={1.5}
-                    />
-                  </div>
+                    >
+                      <AlertTriangle
+                        className={`h-3.5 w-3.5 ${
+                          n.unread ? "text-destructive" : "text-muted-foreground"
+                        }`}
+                        strokeWidth={1.5}
+                      />
+                    </div>
 
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-foreground truncate">
-                      {n.title}
-                    </p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">
+                        {n.title}
+                      </p>
 
-                    <p className="text-[11px] text-muted-foreground truncate">
-                      {n.body}
-                    </p>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {n.body}
+                      </p>
 
-                    <p className="text-[10px] text-muted-foreground/70 mt-0.5">
-                      {n.time}
-                    </p>
-                  </div>
+                      <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+                        {n.time}
+                      </p>
+                    </div>
 
-                  {n.unread && (
-                    <span className="h-2 w-2 rounded-full bg-destructive shrink-0 mt-1.5" />
-                  )}
-                </button>
-              ))}
+                    {n.unread && (
+                      <span className="h-2 w-2 rounded-full bg-destructive shrink-0 mt-1.5" />
+                    )}
+                  </button>
+                ))
+              )}
             </div>
 
             <div className="p-2 border-t border-border/50">

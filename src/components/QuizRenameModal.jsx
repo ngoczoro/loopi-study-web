@@ -53,10 +53,10 @@ export default function QuizRenameModal({
         </button>
 
         <h2 className="text-lg font-display font-semibold text-foreground mb-1">
-          Đổi tên quiz
+          Rename quiz
         </h2>
         <p className="text-xs text-muted-foreground mb-4">
-          Cập nhật tên hiển thị của quiz này.
+          Update the display name for this quiz.
         </p>
 
         <div className="space-y-4">
@@ -65,7 +65,7 @@ export default function QuizRenameModal({
               htmlFor="quiz-rename-title"
               className="text-sm font-medium text-foreground"
             >
-              Tên quiz
+              Quiz name
             </label>
             <input
               id="quiz-rename-title"
@@ -74,7 +74,7 @@ export default function QuizRenameModal({
               maxLength={200}
               disabled={saving}
               className="w-full h-10 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50"
-              placeholder="Nhập tên quiz"
+              placeholder="Enter quiz name"
             />
           </div>
 
@@ -85,7 +85,7 @@ export default function QuizRenameModal({
               disabled={saving}
               className="flex-1 h-10 rounded-full bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors disabled:opacity-50"
             >
-              Hủy
+              Cancel
             </button>
             <button
               type="button"
@@ -96,10 +96,10 @@ export default function QuizRenameModal({
               {saving ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Đang lưu...
+                  Saving...
                 </>
               ) : (
-                "Lưu"
+                "Save"
               )}
             </button>
           </div>

@@ -31,18 +31,18 @@ export default function QuizReviewSummary({
         <div className="flex-1 space-y-3">
           <div>
             <p className="text-lg font-display font-semibold text-foreground">
-              Kết quả bài làm
+              Quiz results
             </p>
             {reviewMode && (
               <p className="text-xs text-muted-foreground mt-0.5">
-                Đang xem lại lần làm bài
+                Reviewing a past attempt
               </p>
             )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-medium text-foreground">
-              Điểm: {percentage}%
+              Score: {percentage}%
             </span>
             <span
               className={cn(
@@ -55,7 +55,7 @@ export default function QuizReviewSummary({
           </div>
 
           <p className="text-sm text-foreground">
-            Số câu đúng:{" "}
+            Correct answers:{" "}
             <span className="font-semibold">
               {correctCount}/{totalCount}
             </span>
@@ -80,11 +80,11 @@ export default function QuizReviewSummary({
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <Timer className="h-3.5 w-3.5" />
-              Thời gian làm bài: {formatDurationVi(durationSeconds)}
+              Time spent: {formatDurationVi(durationSeconds)}
             </span>
             <span className="inline-flex items-center gap-1">
               <CalendarClock className="h-3.5 w-3.5" />
-              Nộp lúc: {formatSubmittedAtVi(submittedAt)}
+              Submitted: {formatSubmittedAtVi(submittedAt)}
             </span>
           </div>
         </div>
@@ -97,7 +97,7 @@ export default function QuizReviewSummary({
           className="h-9 px-4 rounded-full bg-primary text-primary-foreground text-sm font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
         >
           <RotateCcw className="h-3.5 w-3.5" />
-          {reviewMode ? "Làm lại" : "Thử lại"}
+          {reviewMode ? "Retake" : "Try again"}
         </button>
 
         <button
@@ -106,7 +106,7 @@ export default function QuizReviewSummary({
           className="h-9 px-4 rounded-full bg-secondary text-secondary-foreground text-sm font-medium flex items-center gap-2 hover:bg-secondary/80"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          Về danh sách quiz
+          Back to quizzes
         </button>
       </div>
     </div>

@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Sparkles, Loader2, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAppStore } from "@/lib/store";
-import { useAdminDemoStore } from "@/lib/adminDemoStore";
 import { useSubjects } from "@/hooks/useSubjects";
 import { toast } from "sonner";
 import { moderateContent } from "@/lib/ai-utils";
@@ -26,11 +25,12 @@ import {
   getLatestQuizAttempt,
   getQuizAttempts,
 } from "@/services/quizService";
+import { reportViolation } from "@/services/violationService";
 
 const REVIEW_FILTERS = [
-  { value: "all", label: "Tất cả" },
-  { value: "incorrect", label: "Câu sai" },
-  { value: "correct", label: "Câu đúng" },
+  { value: "all", label: "All" },
+  { value: "incorrect", label: "Incorrect" },
+  { value: "correct", label: "Correct" },
 ];
 
 export default function Quiz() {
@@ -43,7 +43,6 @@ export default function Quiz() {
     upsertQuiz,
   } = useAppStore();
   const { subjects } = useSubjects();
-  const addViolation = useAdminDemoStore((s) => s.addViolation);
   const [activeQuiz, setActiveQuiz] = useState(null);
   const [answers, setAnswers] = useState({});
   const [showResults, setShowResults] = useState(false);
@@ -337,16 +336,11 @@ export default function Quiz() {
 
     const modResult = moderateContent(aiTopic);
     if (modResult?.flagged) {
-      addViolation({
-        userId: "u1",
-        userName: "Student",
-        userEmail: "student@example.com",
+      void reportViolation({
         type: modResult.type,
-        contentId: "",
-        contentTitle: aiTopic,
-        contentType: "note",
-        detectedAt: new Date().toLocaleString(),
-        resolved: false,
+        severity: modResult.severity,
+        contentTitle: aiTopic.trim(),
+        contentType: "quiz",
       });
       toast.error("Content flagged for moderation. Please use appropriate content.");
       return;
@@ -371,7 +365,7 @@ export default function Quiz() {
     setAiLoading(false);
 
     if (!result.success) {
-      toast.error(result.message || "Không thể tạo quiz bằng AI");
+      toast.error(result.message || "Could not generate quiz with AI");
       return;
     }
 
@@ -488,10 +482,10 @@ export default function Quiz() {
                       disabled={aiLoading}
                       className="w-full h-10 rounded-xl bg-background px-3 text-sm text-foreground border border-border outline-none disabled:opacity-50"
                     >
-                      <option value="mixed">Mix nhiều mức độ</option>
-                      <option value="easy">Dễ</option>
-                      <option value="medium">Trung bình</option>
-                      <option value="hard">Khó</option>
+                      <option value="mixed">Mixed difficulty</option>
+                      <option value="easy">Easy</option>
+                      <option value="medium">Medium</option>
+                      <option value="hard">Hard</option>
                     </select>
                     <select
                       value={aiNumberOfQuestions}
@@ -503,7 +497,7 @@ export default function Quiz() {
                     >
                       {[5, 10, 15, 20].map((count) => (
                         <option key={count} value={count}>
-                          {count} câu
+                          {count} questions
                         </option>
                       ))}
                     </select>
@@ -590,8 +584,8 @@ export default function Quiz() {
           </h1>
           <p className="text-sm text-muted-foreground">
             {showResults
-              ? "📋 Xem lại kết quả bài làm"
-              : `${(quiz.questions ?? []).length} câu hỏi`}
+              ? "📋 Review attempt results"
+              : `${(quiz.questions ?? []).length} questions`}
           </p>
         </div>
         <button
@@ -620,7 +614,7 @@ export default function Quiz() {
           {historyLoading ? (
             <div className="text-xs text-muted-foreground flex items-center gap-2">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Đang tải lịch sử làm bài...
+              Loading attempt history...
             </div>
           ) : (
             <QuizAttemptHistory
@@ -651,7 +645,7 @@ export default function Quiz() {
           <div className="space-y-4">
             {reviewAnswers.length === 0 ? (
               <div className="bg-card rounded-2xl p-5 shadow-soft text-sm text-muted-foreground text-center">
-                Không có câu hỏi nào trong bộ lọc này.
+                No questions match this filter.
               </div>
             ) : (
               reviewAnswers.map((answerDetail) => (

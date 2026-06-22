@@ -3,15 +3,20 @@ import { ChevronDown, ChevronUp, Loader2, Search, Sparkles } from "lucide-react"
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
+  WidgetScrollArea,
+  LEARNING_RESOURCE_SCROLL_MAX,
+} from "@/components/WidgetScrollArea";
+import {
   explainDocumentSearch,
   isAiDocumentSearchSupported,
   searchInsideDocument,
 } from "@/services/aiService";
 
 const NOT_ENOUGH_INFO =
-  "Tài liệu hiện có chưa đủ thông tin để trả lời câu hỏi này.";
+  "The available documents do not contain enough information to answer this question.";
 
 const EXCERPT_PREVIEW_LINES = 3;
+const VISIBLE_RESULT_ITEMS = 3;
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -51,6 +56,34 @@ function highlightTerms(text, query) {
   });
 }
 
+function RelevanceBadge({ score }) {
+  if (typeof score !== "number") return null;
+
+  return (
+    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 shrink-0">
+      {Math.round(score * 100)}% Relevant
+    </span>
+  );
+}
+
+function ExplainButton({ onClick, disabled, loading, label = "Explain with AI" }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || loading}
+      className="h-7 px-2.5 rounded-full border border-border text-[11px] font-medium inline-flex items-center gap-1 hover:bg-secondary disabled:opacity-50 shrink-0"
+    >
+      {loading ? (
+        <Loader2 className="h-3 w-3 animate-spin" />
+      ) : (
+        <Sparkles className="h-3 w-3" />
+      )}
+      {label}
+    </button>
+  );
+}
+
 function PassageCard({
   passage,
   query,
@@ -63,9 +96,9 @@ function PassageCard({
   const shouldTruncate = excerpt.length > 180;
 
   return (
-    <div className="rounded-xl border border-primary/10 bg-primary/5 p-3 space-y-2">
-      {groupByDocument ? null : (
-        <div className="flex items-start justify-between gap-2">
+    <div className="rounded-lg bg-background/70 border border-border/60 p-2.5 min-w-0 space-y-2">
+      {!groupByDocument ? (
+        <div className="min-w-0">
           <p
             className="text-sm font-medium text-foreground truncate"
             title={passage.documentTitle}
@@ -73,65 +106,53 @@ function PassageCard({
             {passage.documentTitle}
           </p>
           {passage.subjectName ? (
-            <span className="text-[10px] text-muted-foreground shrink-0">
+            <span className="inline-flex mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
               {passage.subjectName}
             </span>
           ) : null}
         </div>
-      )}
+      ) : null}
 
-      <div>
-        <p
-          className={cn(
-            "text-sm text-foreground/90 whitespace-pre-wrap",
-            !expanded && shouldTruncate && "line-clamp-3",
-          )}
-          style={
-            !expanded && shouldTruncate
-              ? { WebkitLineClamp: EXCERPT_PREVIEW_LINES }
-              : undefined
-          }
-        >
-          {highlightTerms(excerpt, query)}
-        </p>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          {shouldTruncate ? (
-            <button
-              type="button"
-              onClick={() => setExpanded((prev) => !prev)}
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-            >
-              {expanded ? (
-                <>
-                  <ChevronUp className="h-3 w-3" />
-                  Thu gọn
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="h-3 w-3" />
-                  Xem thêm
-                </>
-              )}
-            </button>
-          ) : null}
+      <p
+        className={cn(
+          "text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap",
+          !expanded && shouldTruncate && "line-clamp-3",
+        )}
+        style={
+          !expanded && shouldTruncate
+            ? { WebkitLineClamp: EXCERPT_PREVIEW_LINES }
+            : undefined
+        }
+      >
+        {highlightTerms(excerpt, query)}
+      </p>
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        <ExplainButton
+          onClick={() => onExplain([passage])}
+          loading={explaining}
+        />
+        {shouldTruncate ? (
           <button
             type="button"
-            onClick={() => onExplain([passage])}
-            disabled={explaining}
-            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline disabled:opacity-50"
+            onClick={() => setExpanded((prev) => !prev)}
+            className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
           >
-            {explaining ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
+            {expanded ? (
+              <>
+                <ChevronUp className="h-3 w-3" />
+                Show less
+              </>
             ) : (
-              <Sparkles className="h-3 w-3" />
+              <>
+                <ChevronDown className="h-3 w-3" />
+                View More
+              </>
             )}
-            Giải thích bằng AI
           </button>
-          {typeof passage.score === "number" ? (
-            <span className="text-[10px] text-muted-foreground ml-auto">
-              {Math.round(passage.score * 100)}% liên quan
-            </span>
-          ) : null}
+        ) : null}
+        <div className="ml-auto">
+          <RelevanceBadge score={passage.score} />
         </div>
       </div>
     </div>
@@ -141,15 +162,15 @@ function PassageCard({
 function DocumentGroup({ group, query, onExplain, explainingId }) {
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
+      <div className="min-w-0">
         <p
-          className="text-sm font-semibold text-foreground truncate"
+          className="text-sm font-medium text-foreground truncate"
           title={group.documentTitle}
         >
           {group.documentTitle}
         </p>
         {group.subjectName ? (
-          <span className="text-[10px] text-muted-foreground shrink-0">
+          <span className="inline-flex mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
             {group.subjectName}
           </span>
         ) : null}
@@ -191,6 +212,7 @@ export default function AIDocumentSearchPanel({
   const searchSessionRef = useRef(0);
 
   const groupByDocument = Boolean(subjectId && !documentId);
+  const isCompactSearch = true;
 
   const groupedResults = useMemo(() => {
     if (!groupByDocument) return [];
@@ -213,22 +235,20 @@ export default function AIDocumentSearchPanel({
     return Array.from(map.values());
   }, [results, groupByDocument]);
 
-  const scopeLabel = documentId
-    ? documentTitle || "tài liệu này"
-    : subjectName
-      ? `môn ${subjectName}`
-      : "tài liệu môn học";
+  const scopeHint = documentId
+    ? `Search within ${documentTitle || "this document"}`
+    : `Search within ${subjectName || "subject"} materials`;
 
   const handleSearch = useCallback(async () => {
     const trimmed = query.trim();
 
     if (trimmed.length < 2) {
-      toast.error("Vui lòng nhập ít nhất 2 ký tự.");
+      toast.error("Please enter at least 2 characters.");
       return;
     }
 
     if (!documentId && !subjectId) {
-      toast.error("Không xác định được phạm vi tìm kiếm.");
+      toast.error("Search scope could not be determined.");
       return;
     }
 
@@ -252,7 +272,7 @@ export default function AIDocumentSearchPanel({
     setSearched(true);
 
     if (!response.success) {
-      toast.error(response.message || "Không thể tìm kiếm trong tài liệu.");
+      toast.error(response.message || "Could not search within documents.");
       return;
     }
 
@@ -280,7 +300,7 @@ export default function AIDocumentSearchPanel({
       setExplainingId(null);
 
       if (!response.success) {
-        toast.error(response.message || "Không thể tạo giải thích AI.");
+        toast.error(response.message || "Could not generate AI explanation.");
         return;
       }
 
@@ -294,141 +314,130 @@ export default function AIDocumentSearchPanel({
   }
 
   const hasResults = results.length > 0;
+  const resultCount = groupByDocument
+    ? groupedResults.reduce((sum, group) => sum + group.items.length, 0)
+    : results.length;
+
+  const flatResultCards = !groupByDocument
+    ? results.map((passage, index) => (
+        <PassageCard
+          key={`${passage.documentId}-${index}`}
+          passage={passage}
+          query={query}
+          onExplain={handleExplain}
+          explaining={explaining}
+        />
+      ))
+    : groupedResults.map((group) => (
+        <DocumentGroup
+          key={group.documentId}
+          group={group}
+          query={query}
+          onExplain={handleExplain}
+          explainingId={explainingId}
+        />
+      ));
 
   return (
-    <div
-      className={cn(
-        "rounded-2xl border border-primary/10 bg-gradient-to-br from-primary/5 to-transparent",
-        compact ? "p-3" : "p-4",
-        className,
-      )}
-    >
-      <div className="flex items-center gap-2 mb-3">
-        <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Search className="h-4 w-4 text-primary" strokeWidth={1.5} />
+    <div className={cn("space-y-4 min-h-0", className)}>
+      <div className="shrink-0">
+        <p className="text-xs text-muted-foreground mb-2">{scopeHint}</p>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 min-w-0">
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                handleSearch();
+              }
+            }}
+            placeholder="Search concepts, keywords, definitions..."
+            disabled={loading}
+            className={cn(
+              "flex-1 min-w-0 rounded-xl bg-background text-foreground border border-border outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50",
+              isCompactSearch
+                ? "h-7 px-3 text-xs"
+                : "h-10 px-4 text-sm",
+            )}
+          />
+          <button
+            type="button"
+            onClick={handleSearch}
+            disabled={loading}
+            className={cn(
+              "inline-flex items-center justify-center gap-1 rounded-full bg-primary text-primary-foreground font-medium shrink-0 whitespace-nowrap hover:bg-primary/90 disabled:opacity-50",
+              isCompactSearch
+                ? "h-7 px-3 text-[11px] sm:w-auto w-full"
+                : "h-10 px-4 text-sm",
+            )}
+          >
+            {loading ? (
+              <Loader2
+                className={cn(
+                  "animate-spin shrink-0",
+                  isCompactSearch ? "h-3 w-3" : "h-4 w-4",
+                )}
+              />
+            ) : (
+              <Search
+                className={cn(
+                  "shrink-0",
+                  isCompactSearch ? "h-3 w-3" : "h-4 w-4",
+                )}
+                strokeWidth={isCompactSearch ? 2 : 1.5}
+              />
+            )}
+            Search
+          </button>
         </div>
-        <div>
-          <h3 className="text-sm font-semibold text-foreground">
-            {documentId ? "Tìm trong tài liệu" : "Tìm trong tài liệu môn học"}
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            Tìm kiếm trong {scopeLabel}
-          </p>
-        </div>
-      </div>
-
-      <div
-        className={cn(
-          "flex gap-2",
-          compact ? "flex-col" : "flex-col sm:flex-row",
-        )}
-      >
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              handleSearch();
-            }
-          }}
-          placeholder="Nhập từ khóa hoặc câu hỏi..."
-          disabled={loading}
-          className="flex-1 h-10 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50"
-        />
-        <button
-          type="button"
-          onClick={handleSearch}
-          disabled={loading}
-          className="h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-medium hover:scale-[1.01] transition-transform disabled:opacity-50 inline-flex items-center justify-center gap-2 shrink-0"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Đang tìm...
-            </>
-          ) : (
-            <>
-              <Search className="h-4 w-4" />
-              Tìm kiếm
-            </>
-          )}
-        </button>
       </div>
 
       {loading ? (
-        <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground flex items-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          Đang tìm trong tài liệu...
-        </div>
+          Searching documents...
+        </p>
       ) : null}
 
       {!loading && hasResults ? (
-        <div className="mt-4 space-y-3">
-          {hasResults && !groupByDocument ? (
-            <div className="space-y-2">
-              {results.map((passage, index) => (
-                <PassageCard
-                  key={`${passage.documentId}-${index}`}
-                  passage={passage}
-                  query={query}
-                  onExplain={handleExplain}
-                  explaining={explaining}
-                />
-              ))}
-            </div>
-          ) : null}
-
-          {hasResults && groupByDocument ? (
-            <div className="space-y-4">
-              {groupedResults.map((group) => (
-                <DocumentGroup
-                  key={group.documentId}
-                  group={group}
-                  query={query}
-                  onExplain={handleExplain}
-                  explainingId={explainingId}
-                />
-              ))}
-            </div>
-          ) : null}
+        <div className="space-y-3 min-h-0">
+          <WidgetScrollArea
+            itemCount={resultCount}
+            maxHeightClass={LEARNING_RESOURCE_SCROLL_MAX}
+            listClassName="space-y-2"
+            scrollHint="Scroll for more"
+            visibleItems={VISIBLE_RESULT_ITEMS}
+          >
+            {flatResultCards}
+          </WidgetScrollArea>
 
           {results.length > 1 ? (
-            <button
-              type="button"
+            <ExplainButton
               onClick={() => handleExplain(results)}
-              disabled={explaining}
-              className="w-full h-9 rounded-full border border-primary/20 text-primary text-xs font-medium hover:bg-primary/5 transition-colors disabled:opacity-50 inline-flex items-center justify-center gap-2"
-            >
-              {explaining && explainingId === "all" ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="h-3.5 w-3.5" />
-              )}
-              Giải thích tất cả bằng AI
-            </button>
+              loading={explaining && explainingId === "all"}
+              label="Explain all with AI"
+            />
           ) : null}
         </div>
       ) : null}
 
       {!loading && searched && !hasResults ? (
-        <p className="mt-4 text-sm text-muted-foreground text-center py-2">
-          Không tìm thấy nội dung phù hợp trong tài liệu.
+        <p className="text-sm text-muted-foreground">
+          No matching content found.
         </p>
       ) : null}
 
       {aiExplanation ? (
-        <div className="mt-4 rounded-xl bg-card p-3 shadow-soft space-y-2">
-          <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">
-            Giải thích AI
-          </p>
-          <p className="text-sm text-foreground whitespace-pre-wrap">
+        <div className="rounded-xl bg-primary/5 border border-primary/10 p-3 space-y-2">
+          <p className="text-xs font-semibold text-foreground">AI Explanation</p>
+          <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
             {aiExplanation.answer || NOT_ENOUGH_INFO}
           </p>
           {(aiExplanation.passageReasons ?? []).length > 0 ? (
             <div className="space-y-1 pt-1">
               {aiExplanation.passageReasons.map((item) => (
-                <p key={item.documentId} className="text-xs text-muted-foreground">
+                <p key={item.documentId} className="text-[11px] text-muted-foreground">
                   {item.reason}
                 </p>
               ))}

@@ -79,7 +79,7 @@ export function GlobalSearch() {
   const navigate = useNavigate();
 
   const subjects = useAppStore((s) => s.subjects ?? []);
-  const content = useAppStore((s) => s.content ?? s.documents ?? []);
+  const content = useAppStore((s) => s.content ?? []);
   const quizzes = useAppStore((s) => s.quizzes ?? []);
   const fetchSubjects = useAppStore((s) => s.fetchSubjects);
   const fetchContent = useAppStore((s) => s.fetchContent);
@@ -301,11 +301,11 @@ export function GlobalSearch() {
           {loading ? (
             <div className="flex items-center justify-center py-6 gap-2 text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
-              <span className="text-sm">Đang tìm...</span>
+              <span className="text-sm">Searching...</span>
             </div>
           ) : results.length === 0 ? (
             <div className="py-8 px-4 text-center text-muted-foreground text-sm">
-              Không tìm thấy kết quả phù hợp.
+              No matching results found.
             </div>
           ) : (
             <div className="max-h-80 overflow-y-auto py-1">

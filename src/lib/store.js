@@ -1,18 +1,5 @@
 import { create } from "zustand";
 import {
-  getUsers,
-  saveUsers,
-  loginUser,
-  registerUserAuth,
-  resetPasswordAuth,
-  getUserByEmail,
-  generateOTP,
-  saveOTP,
-  getOTP,
-  verifyOTP,
-  clearOTP,
-} from "./auth-utils";
-import {
   getSubjects,
   getSubjectById,
   createSubject as createSubjectAPI,
@@ -61,109 +48,14 @@ import {
  * @property {number|null} requiredHoursPerWeek
  */
 
-/**
- * @typedef {Object} UserAccount
- * @property {string} id
- * @property {string} username
- * @property {string} email
- * @property {"student" | "admin"} role
- * @property {boolean} locked
- * @property {string} createdAt
- */
-
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-const loadPreferencesFromStorage = () => {
-  try {
-    const stored = localStorage.getItem("loopi_preferences");
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch (e) {
-    console.error("Error loading preferences:", e);
-  }
-  return {
-    pomodoroDuration: 25,
-    breakDuration: 5,
-    notifications: {
-      taskReminders: true,
-      sessionReminders: true,
-      deadlineAlerts: true,
-    },
-  };
-};
-
 export const useAppStore = create((set, get) => ({
-  // --- AUTH STATE ---
-  currentUser: null,
-  users: getUsers(),
-
-  // --- AUTH ACTIONS ---
-
-  login: (email, password) => {
-    const result = loginUser(email, password);
-    if (result.ok) {
-      set({ currentUser: result.user });
-      return result.user;
-    }
-    return null;
-  },
-
-  logout: () => set({ currentUser: null }),
-
-  registerUser: (username, email, password) => {
-    const result = registerUserAuth(username, email, password);
-    if (result.ok) {
-      set((state) => ({
-        users: getUsers(),
-        currentUser: result.user, // Auto-login sau khi register
-      }));
-      return { ok: true, user: result.user };
-    }
-    return { ok: false, reason: result.reason };
-  },
-
-  resetPassword: (email, newPassword) => {
-    const result = resetPasswordAuth(email, newPassword);
-    if (result.ok) {
-      set((state) => ({ users: getUsers() }));
-      return true;
-    }
-    return false;
-  },
-
-  getUserByEmail,
-
-  // --- OTP ACTIONS ---
-
-  generateAndSaveOTP: (email) => {
-    const code = generateOTP();
-    const otpData = saveOTP(email, code);
-    return otpData ? { ok: true, code } : { ok: false };
-  },
-
-  verifyOTPCode: (email, inputCode) => {
-    return verifyOTP(email, inputCode);
-  },
-
-  clearOTPCode: () => {
-    return clearOTP();
-  },
-
-  toggleLockUser: (id) =>
-    set((state) => ({
-      users: state.users.map((u) =>
-        u.id === id ? { ...u, locked: !u.locked } : u,
-      ),
-    })),
-
-  // --- MAIN DATA STATE ---
   subjects: [],
   subjectsLoading: false,
   subjectsError: null,
 
   content: [],
-  documents: [],
   contentLoading: false,
   contentUploading: false,
   contentError: null,
@@ -181,122 +73,7 @@ export const useAppStore = create((set, get) => ({
   taskSummaryLoading: false,
   taskSummaryError: null,
 
-  sessions: [
-    {
-      id: "ss1",
-      day: 0,
-      start: 9,
-      duration: 2,
-      title: "Linear Algebra",
-      color: "340 82% 59%",
-    },
-    {
-      id: "ss2",
-      day: 1,
-      start: 14,
-      duration: 1.5,
-      title: "React Tutorial",
-      color: "210 80% 60%",
-    },
-    {
-      id: "ss3",
-      day: 2,
-      start: 10,
-      duration: 1,
-      title: "Biology Reading",
-      color: "142 45% 55%",
-    },
-    {
-      id: "ss4",
-      day: 3,
-      start: 16,
-      duration: 1,
-      title: "French Practice",
-      color: "35 90% 60%",
-    },
-    {
-      id: "ss5",
-      day: 4,
-      start: 11,
-      duration: 2,
-      title: "CS Project",
-      color: "210 80% 60%",
-    },
-  ],
-
-  blockedSlots: [],
-
-  // --- USER PREFERENCES ---
-  preferences: loadPreferencesFromStorage(),
-
-  violations: [
-    {
-      id: "v1",
-      userId: "u3",
-      userName: "Charlie",
-      userEmail: "charlie@example.com",
-      type: "spam",
-      contentId: "d6",
-      contentTitle: "BUY CHEAP STUFF NOW!!!",
-      contentType: "note",
-      detectedAt: "Mar 20 02:15",
-      resolved: false,
-    },
-    {
-      id: "v2",
-      userId: "u3",
-      userName: "Charlie",
-      userEmail: "charlie@example.com",
-      type: "irrelevant",
-      contentId: "d7",
-      contentTitle: "Totally not studying lol",
-      contentType: "note",
-      detectedAt: "Mar 19 23:55",
-      resolved: false,
-    },
-    {
-      id: "v3",
-      userId: "u2",
-      userName: "Bob",
-      userEmail: "bob@example.com",
-      type: "inappropriate",
-      contentId: "d3",
-      contentTitle: "Genetics Diagram.pdf",
-      contentType: "file",
-      detectedAt: "Mar 13 12:00",
-      resolved: false,
-    },
-  ],
-
-  adminNotifications: [
-    {
-      id: "an1",
-      title: "Spam detected",
-      body: "Charlie may be spamming notes",
-      time: "10 min ago",
-      unread: true,
-      violationId: "v1",
-    },
-    {
-      id: "an2",
-      title: "Irrelevant content",
-      body: "Charlie posted irrelevant content in Mathematics",
-      time: "1 hour ago",
-      unread: true,
-      violationId: "v2",
-    },
-    {
-      id: "an3",
-      title: "Content flagged",
-      body: "Bob's file was flagged for review",
-      time: "2 days ago",
-      unread: false,
-      violationId: "v3",
-    },
-  ],
-
   // --- ACTIONS ---
-
   // Subjects
   fetchSubjects: async () => {
     set({ subjectsLoading: true, subjectsError: null });
@@ -378,13 +155,13 @@ export const useAppStore = create((set, get) => ({
         item,
         ...state.content.filter((existing) => existing.id !== item.id),
       ];
-      return { content: next, documents: next };
+      return { content: next };
     });
   },
 
   setContentState: (items) => {
     const mapped = mapContentListForUI(Array.isArray(items) ? items : []);
-    set({ content: mapped, documents: mapped });
+    set({ content: mapped });
   },
 
   fetchContent: async () => {
@@ -415,7 +192,6 @@ export const useAppStore = create((set, get) => ({
           const merged = [...mapped, ...other];
           return {
             content: merged,
-            documents: merged,
             contentLoading: false,
             contentError: null,
           };
@@ -511,7 +287,7 @@ export const useAppStore = create((set, get) => ({
     if (result.ok) {
       set((state) => {
         const next = state.content.filter((c) => c.id !== id);
-        return { content: next, documents: next };
+        return { content: next };
       });
       await get().fetchContent();
       return { ok: true };
@@ -519,55 +295,6 @@ export const useAppStore = create((set, get) => ({
     set({ contentError: result.message });
     return { ok: false, message: result.message };
   },
-
-  // Users
-  updateUser: (id, updates) => {
-    const state = get();
-    const updatedUsers = state.users.map((u) =>
-      u.id === id ? { ...u, ...updates } : u,
-    );
-    // Persist to localStorage
-    saveUsers(updatedUsers);
-    set({
-      users: updatedUsers,
-      currentUser:
-        state.currentUser?.id === id
-          ? { ...state.currentUser, ...updates }
-          : state.currentUser,
-    });
-  },
-
-  changePassword: (oldPassword, newPassword) => {
-    const state = get();
-    if (!state.currentUser) return { ok: false, reason: "not-logged-in" };
-
-    // Validate old password
-    if (state.currentUser.password !== oldPassword) {
-      return { ok: false, reason: "invalid-old-password" };
-    }
-
-    // Update password and persist
-    const updatedUsers = state.users.map((u) =>
-      u.id === state.currentUser.id ? { ...u, password: newPassword } : u,
-    );
-    saveUsers(updatedUsers);
-
-    set({
-      users: updatedUsers,
-      currentUser: { ...state.currentUser, password: newPassword },
-    });
-
-    return { ok: true };
-  },
-
-  // Preferences
-  updatePreferences: (updates) =>
-    set((state) => {
-      const newPreferences = { ...state.preferences, ...updates };
-      // Persist to localStorage
-      localStorage.setItem("loopi_preferences", JSON.stringify(newPreferences));
-      return { preferences: newPreferences };
-    }),
 
   // Quizzes
   fetchQuizzes: async (options = {}) => {
@@ -645,75 +372,6 @@ export const useAppStore = create((set, get) => ({
 
     return { ok: false, message: result.message };
   },
-
-  // Sessions (planner sync — API-backed sessions replace mock list when loaded)
-  replaceSessions: (sessions) => set({ sessions }),
-  addSession: (s) =>
-    set((state) => ({ sessions: [...state.sessions, { ...s, id: uid() }] })),
-  addSessions: (newSessions) =>
-    set((state) => ({
-      sessions: [
-        ...state.sessions,
-        ...newSessions.map((s) => ({ ...s, id: uid() })),
-      ],
-    })),
-  updateSession: (id, updates) =>
-    set((state) => ({
-      sessions: state.sessions.map((s) =>
-        s.id === id ? { ...s, ...updates } : s,
-      ),
-    })),
-  deleteSession: (id) =>
-    set((state) => ({
-      sessions: state.sessions.filter((s) => s.id !== id),
-    })),
-
-  // Blocked Slots (Lịch bận)
-  toggleBlockedSlot: (day, hour) =>
-    set((state) => {
-      const exists = state.blockedSlots.some(
-        (s) => s.day === day && s.hour === hour,
-      );
-      return {
-        blockedSlots: exists
-          ? state.blockedSlots.filter(
-              (s) => !(s.day === day && s.hour === hour),
-            )
-          : [...state.blockedSlots, { day, hour }],
-      };
-    }),
-  setBlockedSlots: (slots) => set({ blockedSlots: slots }),
-
-  // Violations & Admin Notifications
-  addViolation: (v) =>
-    set((state) => {
-      const newId = uid();
-      const newViolation = { ...v, id: newId };
-      const newNotification = {
-        id: uid(),
-        title: `${v.type.charAt(0).toUpperCase() + v.type.slice(1)} detected`,
-        body: `${v.userName} posted flagged content: "${v.contentTitle.slice(0, 40)}"`,
-        time: "Just now",
-        unread: true,
-        violationId: newId,
-      };
-      return {
-        violations: [...state.violations, newViolation],
-        adminNotifications: [newNotification, ...state.adminNotifications],
-      };
-    }),
-  resolveViolation: (id) =>
-    set((state) => ({
-      violations: state.violations.map((v) =>
-        v.id === id ? { ...v, resolved: true } : v,
-      ),
-    })),
-  markAdminNotificationRead: (id) =>
-    set((state) => ({
-      adminNotifications: state.adminNotifications.map((n) =>
-        n.id === id ? { ...n, unread: false } : n,
-      ),
-    })),
 
   // Tasks
   fetchTasks: async (params = {}) => {
