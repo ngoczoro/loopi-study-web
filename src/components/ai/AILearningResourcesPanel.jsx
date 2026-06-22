@@ -116,7 +116,7 @@ export default function AILearningResourcesPanel({
 
   const isDashboardLayout = layout === "dashboard";
   const isCompactSearch = !isDashboardLayout;
-  const scopeLabel = subjectName ? `cho môn ${subjectName}` : "mọi chủ đề";
+  const scopeLabel = subjectName ? `for ${subjectName}` : "all topics";
 
   const clearRecommendationResult = useCallback(() => {
     setResult(null);
@@ -178,12 +178,12 @@ export default function AILearningResourcesPanel({
     const trimmed = String(searchQuery ?? "").trim();
 
     if (!trimmed) {
-      toast.error("Vui lòng nhập chủ đề cần tìm.");
+      toast.error("Please enter a topic to search for.");
       return;
     }
 
     if (trimmed.length < 2) {
-      toast.error("Vui lòng nhập ít nhất 2 ký tự");
+      toast.error("Please enter at least 2 characters");
       return;
     }
 
@@ -206,7 +206,7 @@ export default function AILearningResourcesPanel({
     if (!response.success) {
       setError(
         response.message ||
-          "Không thể tìm nguồn học lúc này. Vui lòng thử lại.",
+          "Cannot find relevant learning resources at the moment. Please try again.",
       );
       return;
     }
@@ -234,7 +234,7 @@ export default function AILearningResourcesPanel({
     if (!response.success) {
       setError(
         response.message ||
-          "Không thể tìm nguồn học lúc này. Vui lòng thử lại.",
+          "Cannot find relevant learning resources at the moment. Please try again.",
       );
       return;
     }
@@ -257,7 +257,7 @@ export default function AILearningResourcesPanel({
     }
 
     if (!response.success) {
-      setError(response.message || "Không thể tải kết quả đã lưu.");
+      setError(response.message || "Cannot load saved results.");
       return;
     }
 
@@ -286,11 +286,11 @@ export default function AILearningResourcesPanel({
     setSavingId(null);
 
     if (!response.success) {
-      toast.error(response.message || "Không thể lưu nguồn học");
+      toast.error(response.message || "Cannot save learning resource");
       return;
     }
 
-    toast.success("Đã lưu nguồn học");
+    toast.success("Learning resource saved");
     loadSidebarData();
   };
 
@@ -302,11 +302,11 @@ export default function AILearningResourcesPanel({
     setRemovingId(null);
 
     if (!response.success) {
-      toast.error(response.message || "Không thể xóa nguồn đã lưu");
+      toast.error(response.message || "Cannot delete saved resource");
       return;
     }
 
-    toast.success("Đã xóa nguồn học");
+    toast.success("Learning resource removed");
     loadSidebarData();
   };
 
@@ -364,8 +364,8 @@ export default function AILearningResourcesPanel({
 
   const recentSearchSection = (
     <SidebarSection
-      title="Tìm kiếm gần đây"
-      emptyText="Chưa có tìm kiếm nào."
+      title="Recent Searches"
+      emptyText="No recent searches."
       itemCount={uniqueRecentSearches.length}
     >
       {recentSearchItems}
@@ -374,8 +374,8 @@ export default function AILearningResourcesPanel({
 
   const savedResourcesSection = (
     <SidebarSection
-      title="Nguồn học đã lưu"
-      emptyText="Chưa có nguồn nào được lưu."
+      title="Saved Resources"
+      emptyText="No saved resources."
       itemCount={savedResources.length}
       listClassName="space-y-2"
     >
@@ -387,7 +387,7 @@ export default function AILearningResourcesPanel({
     <div className={cn("space-y-4 min-h-0", className)}>
       <div className="shrink-0">
         <p className="text-xs text-muted-foreground mb-2">
-          Bạn muốn học gì hôm nay? ({scopeLabel})
+          What do you want to learn today? ({scopeLabel})
         </p>
         <div className="flex items-center gap-2 min-w-0">
           <input
@@ -428,7 +428,7 @@ export default function AILearningResourcesPanel({
                 strokeWidth={isCompactSearch ? 2 : 1.5}
               />
             )}
-            {isCompactSearch ? "Tìm" : "Tìm kiếm"}
+            {isCompactSearch ? "Search" : "Search"}
           </button>
         </div>
       </div>
@@ -436,7 +436,7 @@ export default function AILearningResourcesPanel({
       {loading && !result ? (
         <p className="text-sm text-muted-foreground flex items-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Đang tìm nguồn học phù hợp...
+          Searching for relevant learning resources...
         </p>
       ) : null}
 
@@ -447,7 +447,7 @@ export default function AILearningResourcesPanel({
           <div className="flex flex-wrap items-center gap-2">
             {result.fromCache ? (
               <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                Đã lưu từ lần tìm trước
+                Already saved from previous search
               </span>
             ) : null}
             <button
@@ -461,7 +461,7 @@ export default function AILearningResourcesPanel({
               ) : (
                 <RefreshCw className="h-3 w-3" />
               )}
-              Tạo lại gợi ý
+              Regenerate Suggestions
             </button>
           </div>
 
@@ -540,14 +540,14 @@ export default function AILearningResourcesPanel({
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Không tìm thấy nguồn học phù hợp.
+              No relevant learning resources found.
             </p>
           )}
 
           {result.learningPath?.length ? (
             <div className="rounded-xl bg-primary/5 border border-primary/10 p-3">
               <p className="text-xs font-semibold text-foreground mb-2">
-                Lộ trình gợi ý
+                Suggested Learning Path
               </p>
               <ol className="list-decimal list-inside space-y-1">
                 {result.learningPath.map((step, index) => (

@@ -177,14 +177,14 @@ export default function Settings() {
 
   const validateMaxStudyHours = (value) => {
     if (value === "" || value == null || Number.isNaN(Number(value))) {
-      return "Vui lòng nhập số giờ học tối đa mỗi ngày.";
+      return "Please enter the maximum study hours per day.";
     }
     const hours = Number(value);
     if (hours < 1) {
-      return "Số giờ tối thiểu là 1 giờ/ngày.";
+      return "The minimum study hours per day is 1 hour.";
     }
     if (hours > 12) {
-      return "Số giờ tối đa là 12 giờ/ngày.";
+      return "The maximum study hours per day is 12 hours.";
     }
     return "";
   };
@@ -192,7 +192,7 @@ export default function Settings() {
   const handleMaxStudyHoursChange = (rawValue) => {
     setMaxStudyHoursPerDay(rawValue);
     if (rawValue === "" || rawValue == null) {
-      setMaxStudyHoursError("Vui lòng nhập số giờ học tối đa mỗi ngày.");
+      setMaxStudyHoursError("Please enter the maximum study hours per day.");
       return;
     }
     setMaxStudyHoursError(validateMaxStudyHours(rawValue));
@@ -215,7 +215,7 @@ export default function Settings() {
     if (result.success) {
       setMaxStudyHoursPerDay(result.data.maxStudyHoursPerDay ?? 4);
       setMaxStudyHoursError("");
-      toast.success("Đã lưu cài đặt lập lịch học!");
+      toast.success("Study scheduler settings saved successfully!");
     } else {
       toast.error(result.message);
     }
@@ -370,8 +370,7 @@ export default function Settings() {
       {/* Planner */}
       <div className="bg-card rounded-2xl p-5 shadow-soft">
         <h2 className="text-base font-semibold text-foreground mb-4 flex items-center gap-2">
-          <BookOpen className="h-4 w-4 text-primary" strokeWidth={1.5} /> Lập lịch
-          học
+          <BookOpen className="h-4 w-4 text-primary" strokeWidth={1.5} /> Study Scheduler
         </h2>
         <div className="space-y-3">
           <div>
@@ -379,11 +378,11 @@ export default function Settings() {
               htmlFor="max-study-hours-per-day"
               className="text-sm font-medium text-foreground"
             >
-              Số giờ học tối đa mỗi ngày
+              Max Study Hours Per Day
             </label>
             <p className="text-xs text-muted-foreground mt-1 mb-2">
-              Giới hạn này được áp dụng khi StudyLoopi lập lịch học từ môn học,
-              dự án hoặc tài liệu đã tải lên.
+              This limit is applied when StudyLoopi schedules study time from subjects,
+              projects or uploaded materials.
             </p>
             <div className="flex items-center gap-2">
               <input
@@ -398,7 +397,7 @@ export default function Settings() {
                   maxStudyHoursError ? "border-destructive" : "border-border"
                 }`}
               />
-              <span className="text-sm text-muted-foreground">giờ/ngày</span>
+              <span className="text-sm text-muted-foreground">hour/day</span>
             </div>
             {maxStudyHoursError ? (
               <p className="text-xs text-destructive mt-1">{maxStudyHoursError}</p>
@@ -410,7 +409,7 @@ export default function Settings() {
             disabled={savingPlannerPrefs || Boolean(maxStudyHoursError)}
             className="h-10 px-5 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform disabled:opacity-50"
           >
-            {savingPlannerPrefs ? "Đang lưu…" : "Lưu cài đặt"}
+            {savingPlannerPrefs ? "Saving…" : "Save Preferences"}
           </button>
         </div>
       </div>
