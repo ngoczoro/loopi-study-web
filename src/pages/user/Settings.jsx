@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { User, Lock, Bell, Calendar } from "lucide-react";
+import { User, Lock, Bell, Calendar, BookOpen } from "lucide-react";
 import loopyHappy from "@/assets/loopy-happy.png";
 import { useAuthStore } from "@/lib/authStore";
 import {
@@ -43,6 +43,9 @@ export default function Settings() {
     sessionReminders: true,
     deadlineAlerts: true,
   });
+  const [maxStudyHoursPerDay, setMaxStudyHoursPerDay] = useState(4);
+  const [maxStudyHoursError, setMaxStudyHoursError] = useState("");
+  const [savingPlannerPrefs, setSavingPlannerPrefs] = useState(false);
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -68,6 +71,8 @@ export default function Settings() {
             deadlineAlerts: true,
           },
         );
+        setMaxStudyHoursPerDay(prefsRes.data.maxStudyHoursPerDay ?? 4);
+        setMaxStudyHoursError("");
       } else {
         toast.error(prefsRes.message);
       }
@@ -165,6 +170,52 @@ export default function Settings() {
       setNewPw("");
       setConfirmPw("");
       toast.success("Password changed successfully!");
+    } else {
+      toast.error(result.message);
+    }
+  };
+
+  const validateMaxStudyHours = (value) => {
+    if (value === "" || value == null || Number.isNaN(Number(value))) {
+      return "Vui lòng nhập số giờ học tối đa mỗi ngày.";
+    }
+    const hours = Number(value);
+    if (hours < 1) {
+      return "Số giờ tối thiểu là 1 giờ/ngày.";
+    }
+    if (hours > 12) {
+      return "Số giờ tối đa là 12 giờ/ngày.";
+    }
+    return "";
+  };
+
+  const handleMaxStudyHoursChange = (rawValue) => {
+    setMaxStudyHoursPerDay(rawValue);
+    if (rawValue === "" || rawValue == null) {
+      setMaxStudyHoursError("Vui lòng nhập số giờ học tối đa mỗi ngày.");
+      return;
+    }
+    setMaxStudyHoursError(validateMaxStudyHours(rawValue));
+  };
+
+  const handleSavePlannerPreferences = async () => {
+    const error = validateMaxStudyHours(maxStudyHoursPerDay);
+    if (error) {
+      setMaxStudyHoursError(error);
+      toast.error(error);
+      return;
+    }
+
+    setSavingPlannerPrefs(true);
+    const result = await updatePreferences({
+      maxStudyHoursPerDay: Number(maxStudyHoursPerDay),
+    });
+    setSavingPlannerPrefs(false);
+
+    if (result.success) {
+      setMaxStudyHoursPerDay(result.data.maxStudyHoursPerDay ?? 4);
+      setMaxStudyHoursError("");
+      toast.success("Đã lưu cài đặt lập lịch học!");
     } else {
       toast.error(result.message);
     }
@@ -313,6 +364,54 @@ export default function Settings() {
             value={notificationSettings.sessionReminders ?? true}
             onChange={() => handleToggleNotification("sessionReminders")}
           />
+        </div>
+      </div>
+
+      {/* Planner */}
+      <div className="bg-card rounded-2xl p-5 shadow-soft">
+        <h2 className="text-base font-semibold text-foreground mb-4 flex items-center gap-2">
+          <BookOpen className="h-4 w-4 text-primary" strokeWidth={1.5} /> Lập lịch
+          học
+        </h2>
+        <div className="space-y-3">
+          <div>
+            <label
+              htmlFor="max-study-hours-per-day"
+              className="text-sm font-medium text-foreground"
+            >
+              Số giờ học tối đa mỗi ngày
+            </label>
+            <p className="text-xs text-muted-foreground mt-1 mb-2">
+              Giới hạn này được áp dụng khi StudyLoopi lập lịch học từ môn học,
+              dự án hoặc tài liệu đã tải lên.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                id="max-study-hours-per-day"
+                type="number"
+                min={1}
+                max={12}
+                step={0.5}
+                value={maxStudyHoursPerDay}
+                onChange={(e) => handleMaxStudyHoursChange(e.target.value)}
+                className={`w-24 h-10 rounded-xl bg-background px-3 text-sm text-foreground border focus:ring-2 focus:ring-primary/20 outline-none ${
+                  maxStudyHoursError ? "border-destructive" : "border-border"
+                }`}
+              />
+              <span className="text-sm text-muted-foreground">giờ/ngày</span>
+            </div>
+            {maxStudyHoursError ? (
+              <p className="text-xs text-destructive mt-1">{maxStudyHoursError}</p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={handleSavePlannerPreferences}
+            disabled={savingPlannerPrefs || Boolean(maxStudyHoursError)}
+            className="h-10 px-5 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform disabled:opacity-50"
+          >
+            {savingPlannerPrefs ? "Đang lưu…" : "Lưu cài đặt"}
+          </button>
         </div>
       </div>
 

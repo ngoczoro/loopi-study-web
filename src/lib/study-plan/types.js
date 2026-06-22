@@ -26,7 +26,7 @@
  * @property {string} [examDate]
  * @property {SchedulingOverride[]} [schedulingOverrides]
  * @property {ActiveConstraint[]} [constraints]
- * @property {number} [maxStudyHoursPerDay] Max study hours per day (1–12, default 4)
+ * @property {number} [maxStudyHoursPerDay] Optional override; otherwise uses saved Settings value
  */
 
 /**
