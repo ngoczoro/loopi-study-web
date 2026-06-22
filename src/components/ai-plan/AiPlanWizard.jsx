@@ -96,6 +96,7 @@ export default function AiPlanWizard({
   const [plan, setPlan] = useState(null);
   const [schedulingOverrides, setSchedulingOverrides] = useState([]);
   const [planConstraints, setPlanConstraints] = useState([]);
+  const [maxStudyHoursPerDay, setMaxStudyHoursPerDay] = useState(4);
   const [chatMessages, setChatMessages] = useState([]);
   const [chatLoading, setChatLoading] = useState(false);
 
@@ -171,6 +172,7 @@ export default function AiPlanWizard({
     setPlan(null);
     setSchedulingOverrides([]);
     setPlanConstraints([]);
+    setMaxStudyHoursPerDay(4);
     setChatMessages([]);
     setChatLoading(false);
     setShowConfirm(false);
@@ -215,6 +217,7 @@ export default function AiPlanWizard({
         documentId: docId || undefined,
         examDate: examDate || undefined,
         schedulingOverrides: overrides,
+        maxStudyHoursPerDay,
       });
       setLoading(false);
 
@@ -235,7 +238,7 @@ export default function AiPlanWizard({
       setPlan(result.data);
       setStep(STEPS.PREVIEW);
     },
-    [onSubjectsChange],
+    [onSubjectsChange, maxStudyHoursPerDay],
   );
 
   const continueAfterAnalysis = useCallback(
@@ -401,6 +404,7 @@ export default function AiPlanWizard({
     const result = await generateAiPlan({
       mode: AI_PLAN_MODES.EXISTING_SUBJECTS,
       subjectIds: selectedSubjectIds,
+      maxStudyHoursPerDay,
     });
     setLoading(false);
 
@@ -441,6 +445,7 @@ export default function AiPlanWizard({
       subjectIds: activeSubjectIds,
       schedulingOverrides,
       constraints: planConstraints,
+      maxStudyHoursPerDay,
       planContext: {
         weeklySummary: plan?.summary,
       },
@@ -709,6 +714,32 @@ export default function AiPlanWizard({
                     ))}
                   </div>
                 )}
+
+                <div className="rounded-xl border border-border bg-secondary/20 p-4 space-y-2">
+                  <label
+                    htmlFor="max-study-hours-per-day"
+                    className="text-sm font-medium text-foreground"
+                  >
+                    Max study hours per day
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Limits daily workload to avoid burnout. Default is 4 hours.
+                  </p>
+                  <input
+                    id="max-study-hours-per-day"
+                    type="number"
+                    min={1}
+                    max={12}
+                    step={0.5}
+                    value={maxStudyHoursPerDay}
+                    onChange={(e) => {
+                      const parsed = parseFloat(e.target.value);
+                      if (Number.isNaN(parsed)) return;
+                      setMaxStudyHoursPerDay(Math.min(12, Math.max(1, parsed)));
+                    }}
+                    className="w-24 h-9 rounded-lg border border-border bg-background px-3 text-sm"
+                  />
+                </div>
 
                 <div className="flex gap-2">
                   <button
