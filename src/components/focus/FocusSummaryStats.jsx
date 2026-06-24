@@ -12,7 +12,7 @@ export default function FocusSummaryStats({ summary, loading }) {
   }
 
   const stats = [
-    { label: "Total focus", value: `${formatFocusHours(summary?.totalFocusSeconds)} hrs` },
+    { label: "Today", value: `${formatFocusHours(summary?.todayFocusSeconds)} hrs` },
     { label: "This week", value: `${formatFocusHours(summary?.weekFocusSeconds)} hrs` },
     { label: "Completed", value: `${summary?.completedCount ?? 0}` },
     { label: "Avg session", value: `${summary?.avgSessionMinutes ?? 0} min` },

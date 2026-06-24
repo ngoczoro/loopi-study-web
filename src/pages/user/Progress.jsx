@@ -5,11 +5,10 @@ import FocusSummaryStats from "@/components/focus/FocusSummaryStats";
 import FocusStreakCard from "@/components/focus/FocusStreakCard";
 import FocusTrendChart from "@/components/focus/FocusTrendChart";
 import FocusSubjectBreakdown from "@/components/focus/FocusSubjectBreakdown";
-import FocusPlannerInsights from "@/components/focus/FocusPlannerInsights";
 import { formatFocusHours } from "@/services/focusAnalyticsService";
 
 export default function Progress() {
-  const { summary, trends, subjects, streak, planner, loading } = useFocusAnalytics({
+  const { summary, trends, subjects, streak, loading } = useFocusAnalytics({
     days: 28,
   });
 
@@ -67,7 +66,7 @@ export default function Progress() {
         ))}
       </div>
 
-      {/* Component này chứa 4 Badges tiếp theo (Total Focus, This Week, Completed, Avg Session) */}
+      {/* Focus summary badges (Today, This week, Completed, Avg session) */}
       <FocusSummaryStats summary={summary} loading={loading} />
 
       {/* Biểu đồ This Week's Study Time đã được chuyển xuống dưới tổng cộng 8 Badges */}
@@ -79,7 +78,6 @@ export default function Progress() {
       </div>
 
       <FocusSubjectBreakdown subjects={subjects} loading={loading} />
-      <FocusPlannerInsights planner={planner} loading={loading} />
 
       {summary && (
         <div className="bg-muted/30 rounded-xl p-4 text-xs text-muted-foreground space-y-1">

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { format } from "date-fns";
 import {
@@ -28,7 +29,9 @@ import { AI_PLAN_MODES } from "@/lib/study-plan/types";
 import {
   getSubjectScheduleMessage,
   getSubjectScheduleStatus,
+  buildSchedulingOverridesFromSubjects,
 } from "@/lib/study-plan/subjectSchedule";
+import { subjectsQueryOptions } from "@/hooks/queries/subjects";
 import {
   analyzeDocumentForPlan,
   applyAiPlan,
@@ -74,8 +77,9 @@ export default function AiPlanWizard({
   onApplied,
   onSubjectsChange,
   initialContext = null,
-  subjects,
+  subjects = [],
 }) {
+  const queryClient = useQueryClient();
   const content = useAppStore((state) => state.content);
   const fetchContent = useAppStore((state) => state.fetchContent);
   const uploadContentFile = useAppStore((state) => state.uploadContentFile);
@@ -135,19 +139,6 @@ export default function AiPlanWizard({
     return selectedSubjectIds;
   }, [planMode, linkedSubjectId, selectedSubjectIds]);
 
-  const chatSuggestions = useMemo(() => {
-    const primary =
-      subjects.find((subject) => activeSubjectIds.includes(subject.id)) ||
-      subjects[0];
-    const name = primary?.name || "Physics";
-    return [
-      `Reduce ${name} to 2 hours per week`,
-      "No study after 8pm",
-      "Block Saturday",
-      `Make ${name} higher priority`,
-    ];
-  }, [subjects, activeSubjectIds]);
-
   const flatSessions = useMemo(
     () => (plan ? flattenPlanSessions(plan.weeks) : []),
     [plan],
@@ -176,6 +167,23 @@ export default function AiPlanWizard({
     setShowConfirm(false);
   }, [schedulableSubjects]);
 
+  const resolveLatestSubjects = useCallback(async () => {
+    if (onSubjectsChange) {
+      await Promise.resolve(onSubjectsChange());
+    }
+
+    try {
+      const fresh = await queryClient.fetchQuery(subjectsQueryOptions());
+      if (Array.isArray(fresh) && fresh.length > 0) {
+        return fresh;
+      }
+    } catch {
+      // Fall back to props when the refetch fails.
+    }
+
+    return subjects;
+  }, [onSubjectsChange, queryClient, subjects]);
+
   const runGenerate = useCallback(
     async ({
       subjectIds,
@@ -203,12 +211,22 @@ export default function AiPlanWizard({
       }
 
       setLoading(true);
-      const overrides = subjectIds.map((subjectId) => ({
-        subjectId,
-        difficulty: choice?.difficulty,
-        hoursPerWeek: choice?.hoursPerWeek,
-        examDate: examDate || undefined,
-      }));
+      const latestSubjects = await resolveLatestSubjects();
+      const overrides = buildSchedulingOverridesFromSubjects(
+        latestSubjects,
+        subjectIds,
+      ).map((item) => {
+        const subjectId = item.subjectId;
+        return {
+          ...item,
+          ...(choice?.difficulty ? { difficulty: choice.difficulty } : {}),
+          ...(choice?.hoursPerWeek != null
+            ? { hoursPerWeek: choice.hoursPerWeek }
+            : {}),
+          ...(examDate ? { examDate } : {}),
+          subjectId,
+        };
+      });
       const result = await generateAiPlan({
         mode,
         subjectIds,
@@ -227,15 +245,13 @@ export default function AiPlanWizard({
         toast.error("No sessions could be scheduled");
       }
 
-      setSchedulingOverrides(overrides.filter((item) =>
-        item.difficulty != null || item.hoursPerWeek != null || item.examDate,
-      ));
+      setSchedulingOverrides(overrides);
       setPlanConstraints([]);
       setChatMessages([]);
       setPlan(result.data);
       setStep(STEPS.PREVIEW);
     },
-    [onSubjectsChange],
+    [onSubjectsChange, resolveLatestSubjects],
   );
 
   const continueAfterAnalysis = useCallback(
@@ -331,6 +347,7 @@ export default function AiPlanWizard({
   useEffect(() => {
     if (!open) return;
 
+    onSubjectsChange?.();
     setStep(STEPS.MODE);
     setPlanMode(AI_PLAN_MODES.EXISTING_SUBJECTS);
     setSelectedSubjectIds(schedulableSubjects.map((subject) => subject.id));
@@ -398,9 +415,15 @@ export default function AiPlanWizard({
     }
 
     setLoading(true);
+    const latestSubjects = await resolveLatestSubjects();
+    const schedulingOverrides = buildSchedulingOverridesFromSubjects(
+      latestSubjects,
+      selectedSubjectIds,
+    );
     const result = await generateAiPlan({
       mode: AI_PLAN_MODES.EXISTING_SUBJECTS,
       subjectIds: selectedSubjectIds,
+      schedulingOverrides,
     });
     setLoading(false);
 
@@ -418,7 +441,7 @@ export default function AiPlanWizard({
       return;
     }
 
-    setSchedulingOverrides([]);
+    setSchedulingOverrides(schedulingOverrides);
     setPlanConstraints([]);
     setChatMessages([]);
     setPlan(result.data);
@@ -797,16 +820,13 @@ export default function AiPlanWizard({
                 {plan && (
                   <PlanTimelinePreview
                     weeks={plan.weeks}
-                    warnings={plan.warnings}
                     summary={plan.summary}
-                    replacePreview={plan.replacePreview}
                   />
                 )}
                 <PlanChatPanel
                   messages={chatMessages}
                   loading={chatLoading}
                   onSend={handleChatSend}
-                  suggestions={chatSuggestions}
                 />
 
                 <div className="lg:col-span-2 flex flex-wrap gap-2 pt-2">
@@ -822,24 +842,6 @@ export default function AiPlanWizard({
                     className="inline-flex items-center gap-1 h-10 px-4 rounded-full bg-secondary text-sm font-medium"
                   >
                     <ChevronLeft className="h-4 w-4" /> Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      planMode === AI_PLAN_MODES.DOCUMENT
-                        ? runGenerate({
-                            subjectIds: activeSubjectIds,
-                            mode: planMode,
-                            docId: documentId,
-                            choice: schedulingChoice,
-                            examDate: resolvedExamDate,
-                          })
-                        : handleExistingGenerate()
-                    }
-                    disabled={loading}
-                    className="h-10 px-4 rounded-full bg-secondary text-sm font-medium"
-                  >
-                    Regenerate
                   </button>
                   <button
                     type="button"

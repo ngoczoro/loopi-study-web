@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import WeeklyTimeline from "../../components/WeeklyTimeline";
 import TodayTasks from "../../components/TodayTasks";
-import { TaskSummaryCards } from "../../components/TaskSummaryCards";
 import loopyHappy from "../../assets/loopy-happy.png";
 import { Link } from "react-router-dom";
 import { useAppStore } from "../../lib/store";
@@ -124,8 +123,6 @@ export default function Dashboard() {
           />
         </div>
       </div>
-
-      <TaskSummaryCards summary={taskSummary} loading={taskSummaryLoading} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[

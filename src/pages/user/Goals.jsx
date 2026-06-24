@@ -62,6 +62,24 @@ function formatGoalUnit(unit) {
   return unit ?? "";
 }
 
+/** API returns focus progress/target in seconds for hrs/min goals. */
+function formatGoalAmount(value, unit) {
+  const amount = Number(value ?? 0);
+  if (unit === "hrs") return Number((amount / 3600).toFixed(1));
+  if (unit === "min") return Math.round(amount / 60);
+  return amount;
+}
+
+function formatGoalProgressLine(goal) {
+  const unit = goal.unit;
+  const targetDisplay =
+    unit === "hrs" || unit === "min"
+      ? (goal.targetValue ?? formatGoalAmount(goal.target, unit))
+      : (goal.targetValue ?? goal.target ?? 0);
+
+  return `${formatGoalAmount(goal.progress, unit)} / ${targetDisplay} ${formatGoalUnit(unit)}`;
+}
+
 export default function Goals() {
   const { goals, isLoading: goalsLoading } = useGoals();
   const { data: streak, isLoading: streakLoading } = useProgressStreaks();
@@ -100,7 +118,7 @@ export default function Goals() {
     setEditingGoal(goal);
     setForm({
       title: goal.title ?? "",
-      targetValue: goal.target ?? goal.targetValue ?? 1,
+      targetValue: goal.targetValue ?? 1,
       unit: goal.unit ?? "hrs",
       period: goal.period ?? "weekly",
     });
@@ -269,8 +287,7 @@ export default function Goals() {
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                {goal.progress} / {goal.target} {formatGoalUnit(goal.unit)} ·{" "}
-                {goal.percentComplete}% · {goal.status}
+                {formatGoalProgressLine(goal)} · {goal.percentComplete}% · {goal.status}
               </p>
             </div>
           ))

@@ -1,26 +1,17 @@
 import { useState } from "react";
 import { Loader2, MessageSquare, Send } from "lucide-react";
 
-const DEFAULT_SUGGESTIONS = [
-  "Reduce hours for the hardest subject",
-  "No study after 8pm",
-  "Block Saturday this week",
-  "Make Math a higher priority",
-];
-
 /**
  * @param {{
  *   messages: Array<{ role: "user" | "assistant", content: string }>,
  *   loading?: boolean,
  *   onSend: (message: string) => void | Promise<void>,
- *   suggestions?: string[],
  * }} props
  */
 export default function PlanChatPanel({
   messages,
   loading = false,
   onSend,
-  suggestions = DEFAULT_SUGGESTIONS,
 }) {
   const [input, setInput] = useState("");
 
@@ -30,11 +21,6 @@ export default function PlanChatPanel({
     if (!text || loading) return;
     setInput("");
     await onSend(text);
-  };
-
-  const handleSuggestion = (text) => {
-    if (loading) return;
-    onSend(text);
   };
 
   return (
@@ -71,22 +57,6 @@ export default function PlanChatPanel({
           </div>
         )}
       </div>
-
-      {messages.length === 0 && suggestions.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-2">
-          {suggestions.map((text) => (
-            <button
-              key={text}
-              type="button"
-              disabled={loading}
-              onClick={() => handleSuggestion(text)}
-              className="rounded-full bg-card border border-border px-2.5 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-secondary/60 disabled:opacity-50"
-            >
-              {text}
-            </button>
-          ))}
-        </div>
-      )}
 
       <form onSubmit={handleSubmit} className="mt-3 flex gap-2">
         <input

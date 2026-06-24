@@ -50,3 +50,27 @@ export const getSubjectScheduleMessage = (reason) => {
       return "Cannot schedule this subject.";
   }
 };
+
+/**
+ * Map current subject rows into AI plan scheduling overrides.
+ * @param {Array<{ id: string, difficulty?: string|null, requiredHoursPerWeek?: number|null, credits?: number|null, priority?: string|null, examDate?: string|null }>} subjects
+ * @param {string[]} subjectIds
+ */
+export const buildSchedulingOverridesFromSubjects = (subjects, subjectIds) =>
+  subjectIds.flatMap((subjectId) => {
+    const subject = subjects.find((item) => item.id === subjectId);
+    if (!subject) return [];
+
+    const hoursPerWeek =
+      subject.requiredHoursPerWeek ?? subject.credits ?? undefined;
+
+    return [
+      {
+        subjectId,
+        ...(subject.difficulty ? { difficulty: subject.difficulty } : {}),
+        ...(hoursPerWeek != null ? { hoursPerWeek: Number(hoursPerWeek) } : {}),
+        ...(subject.priority ? { priority: subject.priority } : {}),
+        ...(subject.examDate ? { examDate: subject.examDate } : {}),
+      },
+    ];
+  });

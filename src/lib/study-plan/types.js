@@ -9,6 +9,7 @@
  * @property {string} subjectId
  * @property {SubjectDifficulty} [difficulty]
  * @property {number} [hoursPerWeek]
+ * @property {"low"|"medium"|"high"} [priority]
  * @property {string} [examDate]
  */
 

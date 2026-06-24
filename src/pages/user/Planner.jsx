@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
@@ -21,6 +21,17 @@ import { useBlockedSlotsQuery } from "@/hooks/queries/user";
 import { getWeekStartDate } from "@/lib/plannerWeek";
 import AiPlanWizard from "@/components/ai-plan/AiPlanWizard";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/alert-dialog";
+import {
+  clearAllPlannerSessions,
   createPlannerSession,
   deletePlannerSession,
   updatePlannerSession,
@@ -100,7 +111,7 @@ function parseICS(text) {
 }
 
 export default function Planner() {
-  const { subjects } = useSubjects();
+  const { subjects, refetch: refetchSubjects } = useSubjects();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -125,6 +136,7 @@ export default function Planner() {
   const {
     sessions,
     loading: sessionsLoading,
+    isFetching: sessionsFetching,
     refetch: refetchSessions,
   } = usePlannerWeek(weekStartDate);
   const {
@@ -134,7 +146,16 @@ export default function Planner() {
   } = useBlockedSlotsQuery();
   const { setSessions } = usePlannerWeekCache(weekStartDate);
 
-  const loading = sessionsLoading || blockedLoading;
+  const hasInitiallyLoaded = useRef(false);
+
+  useEffect(() => {
+    if (!sessionsLoading && !blockedLoading) {
+      hasInitiallyLoaded.current = true;
+    }
+  }, [sessionsLoading, blockedLoading]);
+
+  const showInitialLoader =
+    !hasInitiallyLoaded.current && (sessionsLoading || blockedLoading);
 
   const reloadWeek = () => {
     refetchSessions();
@@ -177,6 +198,8 @@ export default function Planner() {
   const [activeMenuId, setActiveMenuId] = useState(null);
 
   const [showAiPlan, setShowAiPlan] = useState(false);
+  const [clearAllOpen, setClearAllOpen] = useState(false);
+  const [clearingAll, setClearingAll] = useState(false);
 
   const [addForm, setAddForm] = useState({
     title: "",
@@ -413,6 +436,27 @@ export default function Planner() {
     }
   };
 
+  const handleClearAllSessions = async () => {
+    setClearingAll(true);
+    const result = await clearAllPlannerSessions();
+    setClearingAll(false);
+
+    if (!result.success) {
+      toast.error(result.message || "Failed to clear planner sessions");
+      return;
+    }
+
+    const deleted = result.data?.deleted ?? 0;
+    setSessions([]);
+    queryClient.invalidateQueries({ queryKey: ["planner"] });
+    setClearAllOpen(false);
+    toast.success(
+      deleted > 0
+        ? `Removed ${deleted} session${deleted === 1 ? "" : "s"} from your planner`
+        : "Your planner is already empty",
+    );
+  };
+
   const handleICSImport = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -502,7 +546,7 @@ export default function Planner() {
     if (fileRef.current) fileRef.current.value = "";
   };
 
-  if (loading) {
+  if (showInitialLoader) {
     return (
       <div className="max-w-6xl mx-auto py-16 text-center text-muted-foreground">
         Loading planner…
@@ -557,6 +601,12 @@ export default function Planner() {
             <Sparkles className="h-4 w-4" /> AI Plan
           </button>
           <button
+            onClick={() => setClearAllOpen(true)}
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-full border border-destructive/30 text-destructive font-medium text-sm hover:bg-destructive/10 transition-colors"
+          >
+            <Trash2 className="h-4 w-4" /> Clear All
+          </button>
+          <button
             onClick={() => setShowAdd(true)}
             className="inline-flex items-center gap-2 h-9 px-4 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.02] transition-transform"
           >
@@ -565,7 +615,11 @@ export default function Planner() {
         </div>
       </div>
 
-      <div className="bg-card rounded-2xl shadow-soft border border-border/50 overflow-hidden">
+      <div
+        className={`bg-card rounded-2xl shadow-soft border border-border/50 overflow-hidden transition-opacity duration-150 ${
+          sessionsFetching && hasInitiallyLoaded.current ? "opacity-60" : ""
+        }`}
+      >
         <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-border/50 bg-muted/30">
           <div />
           {weekDays.map((day) => (
@@ -712,6 +766,34 @@ export default function Planner() {
         </p>
       </div>
 
+      <AlertDialog open={clearAllOpen} onOpenChange={setClearAllOpen}>
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear all planner sessions?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete every session on your planner —
+              including manual sessions, applied AI plans, and imported events
+              across all weeks. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-full" disabled={clearingAll}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={clearingAll}
+              onClick={(e) => {
+                e.preventDefault();
+                handleClearAllSessions();
+              }}
+            >
+              {clearingAll ? "Deleting..." : "Delete All"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AnimatePresence>
         {(showAdd || editingSession) && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -856,9 +938,11 @@ export default function Planner() {
       <AnimatePresence>
         {showAiPlan && (
           <AiPlanWizard
-            isOpen={showAiPlan}
+            open={showAiPlan}
             onClose={() => setShowAiPlan(false)}
-            onPlanCreated={() => {
+            subjects={subjects}
+            onSubjectsChange={refetchSubjects}
+            onApplied={() => {
               setShowAiPlan(false);
               reloadWeek();
             }}

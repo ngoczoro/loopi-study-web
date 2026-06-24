@@ -4,7 +4,6 @@ import {
   getFocusAnalyticsTrendsAPI,
   getFocusSubjectStatsAPI,
   getFocusStreakAPI,
-  getFocusPlannerInsightsAPI,
 } from "@/services/focusAnalyticsService";
 import { queryKeys } from "@/lib/query/queryKeys";
 import { unwrapServiceResult } from "@/lib/query/unwrap";
@@ -54,17 +53,6 @@ function focusSubjectStatsQueryOptions(params = {}) {
   };
 }
 
-function focusPlannerInsightsQueryOptions(params = {}) {
-  return {
-    queryKey: queryKeys.focus.analytics.planner(params),
-    queryFn: async () =>
-      unwrapServiceResult(
-        await getFocusPlannerInsightsAPI(params),
-        "Failed to fetch planner insights",
-      ),
-  };
-}
-
 export function useFocusAnalyticsSummary(params = {}, options = {}) {
   const authEnabled = useAuthQueryEnabled();
   return useQuery({
@@ -110,24 +98,17 @@ export function useFocusAnalytics(options = {}) {
     enabled,
   });
 
-  const plannerQuery = useQuery({
-    ...focusPlannerInsightsQueryOptions({}),
-    enabled,
-  });
-
   const loading =
     summaryQuery.isLoading ||
     trendsQuery.isLoading ||
     subjectStatsQuery.isLoading ||
-    streakQuery.isLoading ||
-    plannerQuery.isLoading;
+    streakQuery.isLoading;
 
   const error =
     summaryQuery.error?.message ||
     trendsQuery.error?.message ||
     subjectStatsQuery.error?.message ||
     streakQuery.error?.message ||
-    plannerQuery.error?.message ||
     null;
 
   const reload = async () => {
@@ -136,7 +117,6 @@ export function useFocusAnalytics(options = {}) {
       trendsQuery.refetch(),
       subjectStatsQuery.refetch(),
       streakQuery.refetch(),
-      plannerQuery.refetch(),
     ]);
   };
 
@@ -145,7 +125,6 @@ export function useFocusAnalytics(options = {}) {
     trends: trendsQuery.data ?? null,
     subjects: subjectStatsQuery.data ?? [],
     streak: streakQuery.data ?? null,
-    planner: plannerQuery.data ?? null,
     loading,
     error,
     reload,

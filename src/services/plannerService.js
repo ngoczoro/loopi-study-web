@@ -3,9 +3,9 @@ import api from "./api";
 const toApiPayload = (session, weekStartDate) => ({
   title: session.title,
   subjectId: session.subjectId || null,
-  dayOfWeek: session.day,
-  startHour: session.start,
-  durationHours: session.duration,
+  dayOfWeek: session.dayOfWeek ?? session.day,
+  startHour: session.startHour ?? session.start,
+  durationHours: session.durationHours ?? session.duration,
   color: session.color ?? null,
   weekStartDate: session.weekStartDate ?? weekStartDate,
   ...(session.source ? { source: session.source } : {}),
@@ -73,9 +73,14 @@ export const updatePlannerSession = async (id, updates, weekStartDate) => {
       payload.subjectId = updates.subjectId || null;
     }
     if (updates.day !== undefined) payload.dayOfWeek = updates.day;
+    if (updates.dayOfWeek !== undefined) payload.dayOfWeek = updates.dayOfWeek;
     if (updates.start !== undefined) payload.startHour = updates.start;
+    if (updates.startHour !== undefined) payload.startHour = updates.startHour;
     if (updates.duration !== undefined) {
       payload.durationHours = updates.duration;
+    }
+    if (updates.durationHours !== undefined) {
+      payload.durationHours = updates.durationHours;
     }
     if (updates.color !== undefined) payload.color = updates.color;
     if (updates.weekStartDate !== undefined) {
@@ -113,6 +118,24 @@ export const deletePlannerSession = async (id) => {
       success: false,
       message:
         error.response?.data?.message || "Failed to delete planner session",
+      error: error.response?.data,
+    };
+  }
+};
+
+export const clearAllPlannerSessions = async () => {
+  try {
+    const response = await api.delete("/planner/sessions/all");
+    return {
+      success: true,
+      data: response.data.data,
+      message: response.data.message,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message:
+        error.response?.data?.message || "Failed to clear planner sessions",
       error: error.response?.data,
     };
   }

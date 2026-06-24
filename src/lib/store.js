@@ -20,6 +20,8 @@ import {
   mapContentListForUI,
 } from "./content-utils";
 import { getApiErrorMessage } from "./apiErrorUtils.js";
+import { queryClient } from "./query/queryClient";
+import { invalidateSubjects } from "./query/invalidate";
 import {
   getTasks,
   getTaskSummary,
@@ -108,6 +110,7 @@ export const useAppStore = create((set, get) => ({
         subjectsLoading: false,
         subjectsError: null,
       }));
+      invalidateSubjects(queryClient);
       return { ok: true, data: result.data };
     }
     set({ subjectsLoading: false, subjectsError: result.message });
@@ -125,6 +128,7 @@ export const useAppStore = create((set, get) => ({
         subjectsLoading: false,
         subjectsError: null,
       }));
+      invalidateSubjects(queryClient);
       return { ok: true, data: result.data };
     }
     set({ subjectsLoading: false, subjectsError: result.message });
@@ -140,6 +144,7 @@ export const useAppStore = create((set, get) => ({
         subjectsLoading: false,
         subjectsError: null,
       }));
+      invalidateSubjects(queryClient);
       return { ok: true };
     }
     set({ subjectsLoading: false, subjectsError: result.message });

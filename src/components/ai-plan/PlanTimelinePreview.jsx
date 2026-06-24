@@ -7,13 +7,11 @@ export const formatSessionTime = (startHour) => {
 };
 
 /**
- * @param {{ weeks: import("@/lib/study-plan/types").WeekPlan[], warnings?: string[], summary?: import("@/lib/study-plan/types").PlanSubjectSummary[], replacePreview?: import("@/lib/study-plan/types").ReplacePreviewItem[] }} props
+ * @param {{ weeks: import("@/lib/study-plan/types").WeekPlan[], summary?: import("@/lib/study-plan/types").PlanSubjectSummary[] }} props
  */
 export default function PlanTimelinePreview({
   weeks,
-  warnings = [],
   summary = [],
-  replacePreview = [],
 }) {
   if (!weeks.length) {
     return (
@@ -38,29 +36,6 @@ export default function PlanTimelinePreview({
                 {item.totalSessions} sessions · {item.totalHours}h total
               </p>
             </div>
-          ))}
-        </div>
-      )}
-
-      {replacePreview.some((item) => item.countToReplace > 0) && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-foreground">
-          {replacePreview
-            .filter((item) => item.countToReplace > 0)
-            .map((item) => (
-              <p key={item.subjectId}>
-                {item.countToReplace} existing AI Plan session(s) for{" "}
-                {item.subjectName} will be replaced on Apply.
-              </p>
-            ))}
-        </div>
-      )}
-
-      {warnings.length > 0 && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 space-y-1">
-          {warnings.map((warning) => (
-            <p key={warning} className="text-xs text-foreground">
-              {warning}
-            </p>
           ))}
         </div>
       )}

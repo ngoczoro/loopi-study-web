@@ -6,7 +6,14 @@ const spamPatterns = [
   /act\s+now/i,
   /!!!/,
 ];
-const inappropriatePatterns = [/stupid/i, /hate/i, /idiot/i, /dumb/i];
+const inappropriatePatterns = [
+  /stupid/i,
+  /hate/i,
+  /idiot/i,
+  /dumb/i,
+  /kill/i,
+  /hurt/i,
+];
 
 /** Client-side pre-check before AI quiz generation; reports via POST /violations when flagged. */
 export function moderateContent(text) {
