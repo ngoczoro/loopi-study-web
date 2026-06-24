@@ -11,7 +11,6 @@ import {
   Trash2,
   MoreVertical,
   Edit2,
-  Save,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
@@ -20,7 +19,6 @@ import { useSubjects } from "@/hooks/useSubjects";
 import { usePlannerWeek, usePlannerWeekCache } from "@/hooks/usePlannerWeek";
 import { useBlockedSlotsQuery } from "@/hooks/queries/user";
 import { getWeekStartDate } from "@/lib/plannerWeek";
-import { invalidatePlannerWeek } from "@/lib/query/invalidate";
 import AiPlanWizard from "@/components/ai-plan/AiPlanWizard";
 import {
   createPlannerSession,
@@ -32,41 +30,77 @@ import { toast } from "sonner";
 const hours = Array.from({ length: 24 }, (_, i) => i);
 const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+function getYYYYMMDDMonday(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  d.setDate(diff);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function parseICS(text) {
   const events = [];
   const blocks = text.split("BEGIN:VEVENT");
+  
   for (const block of blocks.slice(1)) {
     const summary = block.match(/SUMMARY:(.*)/)?.[1]?.trim() || "Imported Event";
-    const dtstart = block.match(/DTSTART[^:]*:(\d{8}T\d{6})/)?.[1];
-    const dtend = block.match(/DTEND[^:]*:(\d{8}T\d{6})/)?.[1];
-    if (dtstart) {
-      const startHour = parseInt(dtstart.slice(9, 11));
-      const startMin = parseInt(dtstart.slice(11, 13));
-      const date = new Date(
-        parseInt(dtstart.slice(0, 4)),
-        parseInt(dtstart.slice(4, 6)) - 1,
-        parseInt(dtstart.slice(6, 8)),
-      );
-      const dayOfWeek = (date.getDay() + 6) % 7;
-      let duration = 1;
-      if (dtend) {
-        const endHour = parseInt(dtend.slice(9, 11));
-        const endMin = parseInt(dtend.slice(11, 13));
-        duration = endHour + endMin / 60 - (startHour + startMin / 60);
+    const dtstartLine = block.match(/DTSTART.*:(.*)/)?.[1]?.trim();
+    const dtendLine = block.match(/DTEND.*:(.*)/)?.[1]?.trim();
+
+    console.log("=== DEBUG EVENT KHỐI ICS ===");
+    console.log("summary:", summary);
+    console.log("dtstartLine:", dtstartLine);
+    console.log("dtendLine:", dtendLine);
+
+    if (dtstartLine) {
+      const cleanStart = dtstartLine.replace(/[^0-9T]/g, "");
+      console.log("cleanStart:", cleanStart, "length:", cleanStart.length);
+
+      if (cleanStart.length >= 15) {
+        const year = parseInt(cleanStart.slice(0, 4), 10);
+        const month = parseInt(cleanStart.slice(4, 6), 10) - 1;
+        const day = parseInt(cleanStart.slice(6, 8), 10);
+        const startHourValue = parseInt(cleanStart.slice(9, 11), 10);
+        const startMin = parseInt(cleanStart.slice(11, 13), 10);
+        
+        const date = new Date(year, month, day, startHourValue, startMin);
+        
+        if (isNaN(date.getTime())) {
+          console.error("❌ LỖI: Date không hợp lệ!");
+          continue; 
+        }
+
+        const dayOfWeek = (date.getDay() + 6) % 7;
+        const eventWeekStart = getYYYYMMDDMonday(date);
+
+        console.log("👉 Kết quả tính toán -> dayOfWeek:", dayOfWeek, "weekStartDate:", eventWeekStart);
+
+        let duration = 1;
+        if (dtendLine) {
+          const cleanEnd = dtendLine.replace(/[^0-9T]/g, "");
+          if (cleanEnd.length >= 15) {
+            const endHour = parseInt(cleanEnd.slice(9, 11), 10);
+            const endMin = parseInt(cleanEnd.slice(11, 13), 10);
+            duration = (endHour + endMin / 60) - (startHourValue + startMin / 60);
+          }
+        }
+
+        events.push({
+          title: String(summary),
+          day: Math.floor(Number(dayOfWeek)),  
+          start: Number(startHourValue + startMin / 60), 
+          duration: Number(Math.max(0.5, duration)), 
+          color: "280 60% 65%", 
+          weekStartDate: String(eventWeekStart), 
+        });
       }
-      events.push({
-        title: summary,
-        day: dayOfWeek,
-        start: startHour + startMin / 60,
-        duration: Math.max(0.5, duration),
-      });
     }
   }
   return events;
 }
 
 export default function Planner() {
-  const { subjects, fetchSubjects } = useSubjects();
+  const { subjects } = useSubjects();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -147,16 +181,16 @@ export default function Planner() {
   const [addForm, setAddForm] = useState({
     title: "",
     subjectId: "",
-    day: "0",
-    start: "9",
-    duration: "1",
+    dayOfWeek: "0",
+    startHour: "9",
+    durationHours: "1",
   });
   const [editForm, setEditForm] = useState({
     title: "",
     subjectId: "",
-    day: "0",
-    start: "9",
-    duration: "1",
+    dayOfWeek: "0",
+    startHour: "9",
+    durationHours: "1",
   });
 
   const findSubjectByTitle = (title) =>
@@ -191,7 +225,7 @@ export default function Planner() {
     let newStart = hour + snapped;
     if (newStart > 19.5) newStart = 19.5;
 
-    if (sessionOverlapsBlocked(dayIndex, newStart, session.duration)) {
+    if (sessionOverlapsBlocked(dayIndex, newStart, session.durationHours || session.duration)) {
       toast.error("This time overlaps a blocked slot in your availability settings");
       dragIdRef.current = null;
       return;
@@ -199,7 +233,7 @@ export default function Planner() {
 
     const result = await updatePlannerSession(
       id,
-      { day: dayIndex, start: newStart },
+      { dayOfWeek: Number(dayIndex), startHour: Number(newStart) },
       weekStartDate,
     );
 
@@ -231,7 +265,7 @@ export default function Planner() {
       );
       setSessions((prev) =>
         prev.map((s) =>
-          s.id === sessionId ? { ...s, duration: latestDuration } : s,
+          s.id === sessionId ? { ...s, durationHours: latestDuration, duration: latestDuration } : s,
         ),
       );
     };
@@ -243,7 +277,7 @@ export default function Planner() {
 
       const result = await updatePlannerSession(
         sessionId,
-        { duration: latestDuration },
+        { durationHours: Number(latestDuration) },
         weekStartDate,
       );
 
@@ -289,9 +323,9 @@ export default function Planner() {
 
     if (
       sessionOverlapsBlocked(
-        parseInt(addForm.day, 10),
-        parseFloat(addForm.start),
-        parseFloat(addForm.duration),
+        parseInt(addForm.dayOfWeek, 10),
+        parseFloat(addForm.startHour),
+        parseFloat(addForm.durationHours),
       )
     ) {
       toast.error("This time is blocked in your availability settings");
@@ -302,9 +336,10 @@ export default function Planner() {
       {
         title: addForm.title.trim(),
         subjectId: subject?.id ?? null,
-        day: parseInt(addForm.day, 10),
-        start: parseFloat(addForm.start),
-        duration: parseFloat(addForm.duration),
+        dayOfWeek: Number(addForm.dayOfWeek),
+        startHour: Number(addForm.startHour),
+        durationHours: Number(addForm.durationHours),
+        weekStartDate: weekStartDate,
         color:
           subject?.color ||
           ["340 82% 59%", "210 80% 60%", "142 45% 55%", "35 90% 60%"][
@@ -317,7 +352,7 @@ export default function Planner() {
     if (result.success) {
       setSessions((prev) => [...prev, result.data]);
       setShowAdd(false);
-      setAddForm({ title: "", subjectId: "", day: "0", start: "9", duration: "1" });
+      setAddForm({ title: "", subjectId: "", dayOfWeek: "0", startHour: "9", durationHours: "1" });
       toast.success("Study session added!");
     } else {
       toast.error(result.message);
@@ -329,9 +364,9 @@ export default function Planner() {
     setEditForm({
       title: session.title,
       subjectId: session.subjectId || "",
-      day: session.day.toString(),
-      start: session.start.toString(),
-      duration: session.duration.toString(),
+      dayOfWeek: (session.dayOfWeek !== undefined ? session.dayOfWeek : session.day).toString(),
+      startHour: (session.startHour !== undefined ? session.startHour : session.start).toString(),
+      durationHours: (session.durationHours !== undefined ? session.durationHours : session.duration).toString(),
     });
     setActiveMenuId(null);
   };
@@ -348,9 +383,10 @@ export default function Planner() {
       {
         title: editForm.title.trim(),
         subjectId: subject?.id ?? null,
-        day: parseInt(editForm.day, 10),
-        start: parseFloat(editForm.start),
-        duration: parseFloat(editForm.duration),
+        dayOfWeek: Number(editForm.dayOfWeek),
+        startHour: Number(editForm.startHour),
+        durationHours: Number(editForm.durationHours),
+        weekStartDate: editingSession.weekStartDate || weekStartDate,
         color: subject?.color ?? editingSession.color,
       },
       weekStartDate,
@@ -394,7 +430,7 @@ export default function Planner() {
 
         const events = parseICS(text);
         if (events.length === 0) {
-          toast.error("No events found in file");
+          toast.error("No valid events found in file. Check your file format.");
           return;
         }
 
@@ -402,14 +438,8 @@ export default function Planner() {
         const failures = [];
 
         for (const evn of events) {
-          const result = await createPlannerSession(
-            {
-              ...evn,
-              color: "280 60% 65%",
-              source: "ics_import",
-            },
-            weekStartDate,
-          );
+          const result = await createPlannerSession(evn, evn.weekStartDate);
+
           if (result.success) {
             created += 1;
           } else {
@@ -556,114 +586,120 @@ export default function Planner() {
         </div>
 
         <div className="max-h-[600px] overflow-y-auto">
-        <div className="grid grid-cols-[60px_repeat(7,1fr)] relative">
-          {hours.map((hour) => (
-            <div key={hour} className="contents">
-              <div className="h-16 flex items-start justify-end pr-2 pt-1 text-[10px] text-muted-foreground font-medium border-b border-border/10">
-                {hour}:00
-              </div>
-              {days.map((dayLabel, di) => {
-                const blocked = isSlotBlocked(dayLabel, hour);
-                return (
-                  <div
-                    key={`${hour}-${di}`}
-                    className={`h-16 border-l border-b border-border/30 relative ${blocked ? "bg-rose-950/10 rounded-md" : ""}`}
-                    onDragOver={handleCellDragOver}
-                    onDrop={(e) => handleCellDrop(e, di, hour)}
-                  >
-                    {sessions
-                      .filter(
-                        (s) => s.day === di && Math.floor(s.start) === hour,
-                      )
-                      .map((s) => (
-                        <div
-                          key={s.id}
-                          draggable
-                          onDragStart={(e) => handleSessionDragStart(e, s.id)}
-                          className={`absolute inset-x-1 rounded-lg p-2 text-[11px] font-medium z-10 group/sess overflow-visible cursor-move ${resizingId === s.id ? "ring-2 ring-primary/40" : ""}`}
-                          style={{
-                            top: `${(s.start - hour) * 64}px`,
-                            height: `${s.duration * 64}px`,
-                            backgroundColor: `hsl(${s.color} / 0.15)`,
-                            color: `hsl(${s.color})`,
-                            borderLeft: `3px solid hsl(${s.color})`,
-                          }}
-                        >
-                          <div className="truncate pr-5">{s.title}</div>
-
-                          <div className="absolute top-1 right-1 opacity-0 group-hover/sess:opacity-100 transition-opacity">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveMenuId(
-                                  activeMenuId === s.id ? null : s.id,
-                                );
+          <div className="grid grid-cols-[60px_repeat(7,1fr)] relative">
+            {hours.map((hour) => (
+              <div key={hour} className="contents">
+                <div className="h-16 flex items-start justify-end pr-2 pt-1 text-[10px] text-muted-foreground font-medium border-b border-border/10">
+                  {hour}:00
+                </div>
+                {days.map((dayLabel, di) => {
+                  const blocked = isSlotBlocked(dayLabel, hour);
+                  return (
+                    <div
+                      key={`${hour}-${di}`}
+                      className={`h-16 border-l border-b border-border/30 relative ${blocked ? "bg-rose-950/10 rounded-md" : ""}`}
+                      onDragOver={handleCellDragOver}
+                      onDrop={(e) => handleCellDrop(e, di, hour)}
+                    >
+                      {sessions
+                        .filter((s) => {
+                          const currentDay = s.dayOfWeek !== undefined ? s.dayOfWeek : s.day;
+                          const currentStart = s.startHour !== undefined ? s.startHour : s.start;
+                          return Number(currentDay) === di && Math.floor(Number(currentStart)) === hour;
+                        })
+                        .map((s) => {
+                          const currentStart = s.startHour !== undefined ? s.startHour : s.start;
+                          const currentDuration = s.durationHours !== undefined ? s.durationHours : s.duration;
+                          return (
+                            <div
+                              key={s.id}
+                              draggable
+                              onDragStart={(e) => handleSessionDragStart(e, s.id)}
+                              className={`absolute inset-x-1 rounded-lg p-2 text-[11px] font-medium z-10 group/sess overflow-visible cursor-move ${resizingId === s.id ? "ring-2 ring-primary/40" : ""}`}
+                              style={{
+                                top: `${(Number(currentStart) - hour) * 64}px`,
+                                height: `${Number(currentDuration) * 64}px`,
+                                backgroundColor: `hsl(${s.color} / 0.15)`,
+                                color: `hsl(${s.color})`,
+                                borderLeft: `3px solid hsl(${s.color})`,
                               }}
-                              className="h-5 w-5 flex items-center justify-center rounded hover:bg-foreground/10"
                             >
-                              <MoreVertical className="h-3.5 w-3.5" />
-                            </button>
-                            <AnimatePresence>
-                              {activeMenuId === s.id && (
-                                <>
-                                  <div
-                                    className="fixed inset-0 z-20"
-                                    onClick={() => setActiveMenuId(null)}
-                                  />
-                                  <motion.div
-                                    initial={{ opacity: 0, scale: 0.9 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.9 }}
-                                    className="absolute right-0 top-6 w-28 bg-card border border-border shadow-xl rounded-xl z-30 py-1 overflow-hidden"
-                                  >
-                                    <button
-                                      onClick={() => handleOpenEdit(s)}
-                                      className="w-full px-3 py-1.5 text-left flex items-center gap-2 hover:bg-muted text-foreground transition-colors"
-                                    >
-                                      <Edit2 className="h-3 w-3" /> Edit
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        handleDeleteSession(s.id);
-                                        setActiveMenuId(null);
-                                      }}
-                                      className="w-full px-3 py-1.5 text-left flex items-center gap-2 hover:bg-destructive/10 text-destructive transition-colors"
-                                    >
-                                      <Trash2 className="h-3 w-3" /> Delete
-                                    </button>
-                                  </motion.div>
-                                </>
-                              )}
-                            </AnimatePresence>
-                          </div>
+                              <div className="truncate pr-5">{s.title}</div>
 
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleStartStudy(s);
-                            }}
-                            className="absolute bottom-1 right-1 inline-flex items-center gap-1 h-6 px-2 rounded-full bg-primary text-primary-foreground text-[10px] font-medium opacity-0 group-hover/sess:opacity-100 transition-opacity hover:scale-[1.05]"
-                            title="Start Study"
-                          >
-                            <Play className="h-2.5 w-2.5" /> Start
-                          </button>
-                          <div
-                            onPointerDown={(e) =>
-                              handleResizeStart(e, s.id, s.duration)
-                            }
-                            className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize flex items-end justify-center opacity-0 group-hover/sess:opacity-100 transition-opacity"
-                            title="Drag to resize"
-                          >
-                            <div className="h-1 w-8 rounded-full bg-current opacity-60" />
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
+                              <div className="absolute top-1 right-1 opacity-0 group-hover/sess:opacity-100 transition-opacity">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuId(
+                                      activeMenuId === s.id ? null : s.id,
+                                    );
+                                  }}
+                                  className="h-5 w-5 flex items-center justify-center rounded hover:bg-foreground/10"
+                                >
+                                  <MoreVertical className="h-3.5 w-3.5" />
+                                </button>
+                                <AnimatePresence>
+                                  {activeMenuId === s.id && (
+                                    <>
+                                      <div
+                                        className="fixed inset-0 z-20"
+                                        onClick={() => setActiveMenuId(null)}
+                                      />
+                                      <motion.div
+                                        initial={{ opacity: 0, scale: 0.9 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        exit={{ opacity: 0, scale: 0.9 }}
+                                        className="absolute right-0 top-6 w-28 bg-card border border-border shadow-xl rounded-xl z-30 py-1 overflow-hidden"
+                                      >
+                                        <button
+                                          onClick={() => handleOpenEdit(s)}
+                                          className="w-full px-3 py-1.5 text-left flex items-center gap-2 hover:bg-muted text-foreground transition-colors"
+                                        >
+                                          <Edit2 className="h-3 w-3" /> Edit
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            handleDeleteSession(s.id);
+                                            setActiveMenuId(null);
+                                          }}
+                                          className="w-full px-3 py-1.5 text-left flex items-center gap-2 hover:bg-destructive/10 text-destructive transition-colors"
+                                        >
+                                          <Trash2 className="h-3 w-3" /> Delete
+                                        </button>
+                                      </motion.div>
+                                    </>
+                                  )}
+                                </AnimatePresence>
+                              </div>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleStartStudy(s);
+                                }}
+                                className="absolute bottom-1 right-1 inline-flex items-center gap-1 h-6 px-2 rounded-full bg-primary text-primary-foreground text-[10px] font-medium opacity-0 group-hover/sess:opacity-100 transition-opacity hover:scale-[1.05]"
+                                title="Start Study"
+                              >
+                                <Play className="h-2.5 w-2.5" /> Start
+                              </button>
+                              <div
+                                onPointerDown={(e) =>
+                                  handleResizeStart(e, s.id, Number(currentDuration))
+                                }
+                                className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize flex items-end justify-center opacity-0 group-hover/sess:opacity-100 transition-opacity"
+                                title="Drag to resize"
+                              >
+                                <div className="h-1 w-8 rounded-full bg-current opacity-60" />
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -751,11 +787,11 @@ export default function Planner() {
                 )}
 
                 <select
-                  value={editingSession ? editForm.day : addForm.day}
+                  value={editingSession ? editForm.dayOfWeek : addForm.dayOfWeek}
                   onChange={(e) =>
                     editingSession
-                      ? setEditForm({ ...editForm, day: e.target.value })
-                      : setAddForm({ ...addForm, day: e.target.value })
+                      ? setEditForm({ ...editForm, dayOfWeek: e.target.value })
+                      : setAddForm({ ...addForm, dayOfWeek: e.target.value })
                   }
                   className="w-full h-10 rounded-xl bg-background px-3 text-sm text-foreground border border-border outline-none"
                 >
@@ -767,11 +803,11 @@ export default function Planner() {
                 </select>
                 <div className="grid grid-cols-2 gap-3">
                   <select
-                    value={editingSession ? editForm.start : addForm.start}
+                    value={editingSession ? editForm.startHour : addForm.startHour}
                     onChange={(e) =>
                       editingSession
-                        ? setEditForm({ ...editForm, start: e.target.value })
-                        : setAddForm({ ...addForm, start: e.target.value })
+                        ? setEditForm({ ...editForm, startHour: e.target.value })
+                        : setAddForm({ ...addForm, startHour: e.target.value })
                     }
                     className="h-10 rounded-xl bg-background px-3 text-sm text-foreground border border-border outline-none"
                   >
@@ -786,38 +822,30 @@ export default function Planner() {
                   </select>
                   <select
                     value={
-                      editingSession ? editForm.duration : addForm.duration
+                      editingSession ? editForm.durationHours : addForm.durationHours
                     }
                     onChange={(e) =>
                       editingSession
                         ? setEditForm({
                             ...editForm,
-                            duration: e.target.value,
+                            durationHours: e.target.value,
                           })
-                        : setAddForm({ ...addForm, duration: e.target.value })
+                        : setAddForm({ ...addForm, durationHours: e.target.value })
                     }
                     className="h-10 rounded-xl bg-background px-3 text-sm text-foreground border border-border outline-none"
                   >
-                    {[0.5, 1, 1.5, 2, 2.5, 3].map((d) => (
+                    {Array.from({ length: 8 }, (_, i) => (i + 1) * 0.5).map((d) => (
                       <option key={d} value={d}>
-                        {d}h
+                        {d} {d === 1 ? "hour" : "hours"}
                       </option>
                     ))}
                   </select>
                 </div>
                 <button
-                  onClick={
-                    editingSession ? handleSaveEdit : handleAddSession
-                  }
-                  className="w-full h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform flex items-center justify-center gap-2"
+                  onClick={editingSession ? handleSaveEdit : handleAddSession}
+                  className="w-full h-11 rounded-xl bg-primary text-primary-foreground text-sm font-medium mt-2 hover:scale-[1.01] transition-transform"
                 >
-                  {editingSession ? (
-                    <>
-                      <Save className="h-4 w-4" /> Save Changes
-                    </>
-                  ) : (
-                    "Add Session"
-                  )}
+                  {editingSession ? "Save Changes" : "Create Session"}
                 </button>
               </div>
             </motion.div>
@@ -825,16 +853,18 @@ export default function Planner() {
         )}
       </AnimatePresence>
 
-      <AiPlanWizard
-        open={showAiPlan}
-        onClose={() => setShowAiPlan(false)}
-        subjects={subjects}
-        onSubjectsChange={fetchSubjects}
-        onApplied={() => {
-          queryClient.invalidateQueries({ queryKey: ["planner"] });
-          refetchSessions();
-        }}
-      />
+      <AnimatePresence>
+        {showAiPlan && (
+          <AiPlanWizard
+            isOpen={showAiPlan}
+            onClose={() => setShowAiPlan(false)}
+            onPlanCreated={() => {
+              setShowAiPlan(false);
+              reloadWeek();
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

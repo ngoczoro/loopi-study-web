@@ -40,6 +40,8 @@ export function exportPlanToICS(sessions, options = {}) {
     `X-WR-CALNAME:${escapeICS(calendarName)}`,
   ];
 
+  const timestamp = Date.now(); 
+
   sessions.forEach((session, index) => {
     const start = sessionToDate(
       session.weekStartDate,
@@ -48,9 +50,12 @@ export function exportPlanToICS(sessions, options = {}) {
     );
     const end = new Date(start.getTime() + session.durationHours * 60 * 60 * 1000);
 
+    // Tạo chuỗi ngẫu nhiên ngắn để đảm bảo UID hoàn toàn duy nhất cho từng buổi học của mỗi tuần
+    const uniqueSalt = Math.random().toString(36).substring(2, 7);
+
     lines.push("BEGIN:VEVENT");
     lines.push(
-      `UID:ai-plan-${session.weekStartDate}-${session.dayOfWeek}-${index}-${Date.now()}@loopi.study`,
+      `UID:ai-plan-${session.weekStartDate}-${session.dayOfWeek}-${index}-${timestamp}-${uniqueSalt}@loopi.study`,
     );
     lines.push(`DTSTART:${formatICSDateTime(start)}`);
     lines.push(`DTEND:${formatICSDateTime(end)}`);
