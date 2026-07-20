@@ -4,6 +4,7 @@ import { unwrapServiceResult } from "@/lib/query/unwrap";
 import { useAuthQueryEnabled } from "@/lib/query/useAuthQueryEnabled";
 import { invalidateNotifications } from "@/lib/query/invalidate";
 import {
+  deleteAllNotificationsAPI,
   deleteNotificationAPI,
   getNotificationsAPI,
   markNotificationReadAPI,
@@ -52,6 +53,19 @@ export function useDeleteNotification() {
       unwrapServiceResult(
         await deleteNotificationAPI(id),
         "Failed to delete notification",
+      ),
+    onSuccess: () => invalidateNotifications(queryClient),
+  });
+}
+
+export function useDeleteAllNotifications() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () =>
+      unwrapServiceResult(
+        await deleteAllNotificationsAPI(),
+        "Failed to delete all notifications",
       ),
     onSuccess: () => invalidateNotifications(queryClient),
   });

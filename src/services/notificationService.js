@@ -43,3 +43,13 @@ export const deleteNotificationAPI = async (id) => {
     return handleError(error, "Failed to delete notification");
   }
 };
+
+export const deleteAllNotificationsAPI = async () => {
+  try {
+    const response = await api.delete("/notifications");
+    return handleSuccess(response);
+  } catch (error) {
+    console.error("Error deleting all notifications:", error);
+    return handleError(error, "Failed to delete all notifications");
+  }
+};

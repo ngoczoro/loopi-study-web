@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Bell, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
+  useDeleteAllNotifications,
   useDeleteNotification,
   useNotifications,
 } from "@/hooks/queries/notifications";
@@ -9,10 +10,23 @@ import {
   formatNotificationTime,
   getNotificationIcon,
 } from "@/lib/notificationDisplay";
+import { Button } from "@/components/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/alert-dialog";
 
 export default function Notifications() {
   const { notifications, isLoading, error } = useNotifications();
   const deleteNotification = useDeleteNotification();
+  const deleteAllNotifications = useDeleteAllNotifications();
   const [deletingId, setDeletingId] = useState(null);
 
   const handleDelete = async (e, id) => {
@@ -28,15 +42,65 @@ export default function Notifications() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    try {
+      await deleteAllNotifications.mutateAsync();
+      toast.success("All notifications deleted");
+    } catch (err) {
+      toast.error(err?.message || "Failed to delete all notifications");
+    }
+  };
+
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-display font-bold text-foreground">
-          Notifications
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Stay on top of your study schedule
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-foreground">
+            Notifications
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Stay on top of your study schedule
+          </p>
+        </div>
+
+        {!isLoading && !error && notifications.length > 0 && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={deleteAllNotifications.isPending}
+                className="rounded-xl shrink-0"
+              >
+                {deleteAllNotifications.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Trash2 className="h-4 w-4 mr-2" strokeWidth={1.5} />
+                )}
+                Delete all
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent className="rounded-2xl">
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete all notifications?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently remove all {notifications.length}{" "}
+                  notifications. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDeleteAll}
+                  className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Delete all
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
       </div>
 
       {isLoading && (
