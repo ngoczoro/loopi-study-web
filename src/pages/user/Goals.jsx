@@ -38,7 +38,6 @@ const UNIT_OPTIONS = [
   { value: "hrs", label: "Hours studied" },
   { value: "min", label: "Minutes studied" },
   { value: "tasks", label: "Tasks completed" },
-  { value: "chapters", label: "Chapters (manual)" },
 ];
 
 const PERIOD_OPTIONS = [
