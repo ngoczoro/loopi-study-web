@@ -14,6 +14,7 @@ import { Skeleton } from "./skeleton";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  filterTasksBySubject,
   isTaskOverdue,
   normalizeTaskSubjectId,
   sortTodayTasks,
@@ -41,6 +42,7 @@ export default function TodayTasks() {
   const deleteTask = useAppStore((s) => s.deleteTask);
 
   const [title, setTitle] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState("all");
   const [subjectId, setSubjectId] = useState("none");
   const [priority, setPriority] = useState("medium");
   const [submitting, setSubmitting] = useState(false);
@@ -52,9 +54,15 @@ export default function TodayTasks() {
 
   const today = todayDateString();
 
-  const todayTasks = useMemo(
-    () => sortTodayTasks(tasks.filter((task) => task.dueDate === today)),
+  const allTodayTasks = useMemo(
+    () => tasks.filter((task) => task.dueDate === today),
     [tasks, today],
+  );
+
+  const todayTasks = useMemo(
+    () =>
+      sortTodayTasks(filterTasksBySubject(allTodayTasks, subjectFilter)),
+    [allTodayTasks, subjectFilter],
   );
 
   const completedCount = todayTasks.filter((task) => task.completed).length;
@@ -165,13 +173,29 @@ export default function TodayTasks() {
       id="todays-tasks"
       className="bg-card rounded-2xl p-5 shadow-soft scroll-mt-24 min-h-0 overflow-hidden"
     >
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
         <h2 className="text-lg font-display font-semibold text-foreground">
           Today's Tasks
         </h2>
-        <span className="text-xs font-bold text-muted-foreground">
-          {completedCount}/{todayTasks.length} completed
-        </span>
+        <div className="flex items-center gap-2 sm:justify-end">
+          <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+            <SelectTrigger className="w-[150px] rounded-xl bg-background/60 h-8 text-xs">
+              <SelectValue placeholder="Filter by subject" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="none">No Subject</SelectItem>
+              {subjects.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-xs font-bold text-muted-foreground shrink-0">
+            {completedCount}/{todayTasks.length} completed
+          </span>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-2 mb-4">
@@ -232,7 +256,11 @@ export default function TodayTasks() {
       ) : todayTasks.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
           <ListChecks className="h-10 w-10 mb-2 opacity-40" />
-          <p className="text-sm">No tasks for today. Add one above!</p>
+          <p className="text-sm">
+            {allTodayTasks.length === 0
+              ? "No tasks for today. Add one above!"
+              : "No tasks match this subject filter."}
+          </p>
         </div>
       ) : (
         <>

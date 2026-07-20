@@ -41,6 +41,14 @@ export const PRIORITY_RANK = {
   low: 3,
 };
 
+export const filterTasksBySubject = (tasks, subjectFilter) => {
+  if (subjectFilter === "all") return tasks;
+  if (subjectFilter === "none") {
+    return tasks.filter((task) => !task.subjectId);
+  }
+  return tasks.filter((task) => task.subjectId === subjectFilter);
+};
+
 export const sortTodayTasks = (tasks) =>
   [...tasks].sort((a, b) => {
     if (a.completed !== b.completed) return a.completed ? 1 : -1;
