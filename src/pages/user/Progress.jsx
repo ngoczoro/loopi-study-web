@@ -1,5 +1,6 @@
 import { TrendingUp, Clock, CheckCircle2, BookOpen } from "lucide-react";
 import { useFocusAnalytics } from "@/hooks/queries/focusAnalytics";
+import { useSubjects } from "@/hooks/useSubjects";
 import WeeklyTimeline from "@/components/WeeklyTimeline";
 import FocusSummaryStats from "@/components/focus/FocusSummaryStats";
 import FocusStreakCard from "@/components/focus/FocusStreakCard";
@@ -8,9 +9,11 @@ import FocusSubjectBreakdown from "@/components/focus/FocusSubjectBreakdown";
 import { formatFocusHours } from "@/services/focusAnalyticsService";
 
 export default function Progress() {
-  const { summary, trends, subjects, streak, loading } = useFocusAnalytics({
-    days: 28,
-  });
+  const { summary, trends, subjects: subjectStats, streak, loading } =
+    useFocusAnalytics({
+      days: 28,
+    });
+  const { subjects, subjectsLoading } = useSubjects();
 
   const avgPerDay = trends?.points?.length
     ? (summary?.monthFocusSeconds ?? 0) / Math.min(trends.points.length, 30) / 3600
@@ -35,23 +38,23 @@ export default function Progress() {
         {[
           {
             icon: Clock,
-            label: "Total Hours",
+            label: "Focus Hours",
             value: loading ? "…" : `${formatFocusHours(summary?.totalFocusSeconds)} hrs`,
           },
           {
             icon: CheckCircle2,
-            label: "Sessions",
+            label: "Focus Pomodoros",
             value: loading ? "…" : `${sessionCount}`,
           },
           {
             icon: TrendingUp,
-            label: "Avg / Day",
+            label: "Avg Focus/Day",
             value: loading ? "…" : `${avgPerDay.toFixed(1)} hrs`,
           },
           {
             icon: BookOpen,
-            label: "Subjects",
-            value: loading ? "…" : `${subjects.length}`,
+            label: "My Subjects",
+            value: subjectsLoading ? "…" : `${subjects.length}`,
           },
         ].map((s) => (
           <div key={s.label} className="bg-card rounded-xl p-4 shadow-soft border border-border">
@@ -66,7 +69,7 @@ export default function Progress() {
         ))}
       </div>
 
-      {/* Focus summary badges (Today, This week, Completed, Avg session) */}
+      {/* Focus summary badges (today/week focus, completed pomodoros, avg length) */}
       <FocusSummaryStats summary={summary} loading={loading} />
 
       {/* Biểu đồ This Week's Study Time đã được chuyển xuống dưới tổng cộng 8 Badges */}
@@ -77,7 +80,7 @@ export default function Progress() {
         <FocusStreakCard streak={streak} loading={loading} />
       </div>
 
-      <FocusSubjectBreakdown subjects={subjects} loading={loading} />
+      <FocusSubjectBreakdown subjects={subjectStats} loading={loading} />
 
       {summary && (
         <div className="bg-muted/30 rounded-xl p-4 text-xs text-muted-foreground space-y-1">

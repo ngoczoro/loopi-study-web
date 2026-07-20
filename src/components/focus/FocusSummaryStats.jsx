@@ -12,10 +12,10 @@ export default function FocusSummaryStats({ summary, loading }) {
   }
 
   const stats = [
-    { label: "Today", value: `${formatFocusHours(summary?.todayFocusSeconds)} hrs` },
-    { label: "This week", value: `${formatFocusHours(summary?.weekFocusSeconds)} hrs` },
-    { label: "Completed", value: `${summary?.completedCount ?? 0}` },
-    { label: "Avg session", value: `${summary?.avgSessionMinutes ?? 0} min` },
+    { label: "Focus Today", value: `${formatFocusHours(summary?.todayFocusSeconds)} hrs` },
+    { label: "Focus This Week", value: `${formatFocusHours(summary?.weekFocusSeconds)} hrs` },
+    { label: "Completed Pomodoros", value: `${summary?.completedCount ?? 0}` },
+    { label: "Avg Pomodoro", value: `${summary?.avgSessionMinutes ?? 0} min` },
   ];
 
   return (
