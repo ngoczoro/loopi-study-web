@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
@@ -12,12 +12,15 @@ import {
   MoreVertical,
   Edit2,
 } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion as Motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import loopyThinking from "@/assets/loopy-thinking.png";
 import { useSubjects } from "@/hooks/useSubjects";
 import { usePlannerWeek, usePlannerWeekCache } from "@/hooks/usePlannerWeek";
-import { useBlockedSlotsQuery } from "@/hooks/queries/user";
+import {
+  useBlockedSlotsQuery,
+  useUserPreferencesQuery,
+} from "@/hooks/queries/user";
 import { getWeekStartDate } from "@/lib/plannerWeek";
 import AiPlanWizard from "@/components/ai-plan/AiPlanWizard";
 import {
@@ -34,12 +37,16 @@ import {
   clearAllPlannerSessions,
   createPlannerSession,
   deletePlannerSession,
+  getPlannerSessions,
   updatePlannerSession,
 } from "@/services/plannerService";
 import { toast } from "sonner";
 
 const hours = Array.from({ length: 24 }, (_, i) => i);
 const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DEFAULT_MAX_STUDY_HOURS_PER_DAY = 4;
+const SUGGEST_START_HOUR = 8;
+const SUGGEST_END_HOUR = 20;
 
 function getYYYYMMDDMonday(date) {
   const d = new Date(date);
@@ -102,13 +109,196 @@ function parseICS(text) {
           start: Number(startHourValue + startMin / 60), 
           duration: Number(Math.max(0.5, duration)), 
           color: "280 60% 65%", 
-          weekStartDate: String(eventWeekStart), 
+          weekStartDate: String(eventWeekStart),
+          source: "ics_import",
         });
       }
     }
   }
   return events;
 }
+
+const getSessionDay = (session) => Number(session.dayOfWeek ?? session.day);
+const getSessionStart = (session) => Number(session.startHour ?? session.start);
+const getSessionDuration = (session) =>
+  Number(session.durationHours ?? session.duration);
+
+const intervalsOverlap = (startA, durationA, startB, durationB) =>
+  startA < startB + durationB && startA + durationA > startB;
+
+const formatHour = (value) => {
+  const hour = Math.floor(Number(value));
+  const minutes = Math.round((Number(value) - hour) * 60);
+  return `${String(hour).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+};
+
+const formatImportedEventTime = (event) =>
+  `${event.weekStartDate} · ${days[event.day]} · ${formatHour(event.start)}-${formatHour(
+    event.start + event.duration,
+  )}`;
+
+const sessionOverlapsEvent = (event, session) =>
+  event.weekStartDate === session.weekStartDate &&
+  getSessionDay(session) === Number(event.day) &&
+  intervalsOverlap(
+    Number(event.start),
+    Number(event.duration),
+    getSessionStart(session),
+    getSessionDuration(session),
+  );
+
+const importedEventOverlapsBlockedSlot = (event, blockedSlots = []) =>
+  blockedSlots.some((slot) => {
+    if (slot.day !== days[event.day]) return false;
+    return intervalsOverlap(Number(event.start), Number(event.duration), Number(slot.hour), 1);
+  });
+
+const findImportedEventConflict = ({
+  event,
+  sessionsByWeek,
+  blockedSlots,
+  plannedEvents = [],
+}) => {
+  if (event.start + event.duration > 24) {
+    return { message: "Event ends after the end of the day" };
+  }
+
+  if (importedEventOverlapsBlockedSlot(event, blockedSlots)) {
+    return {
+      message: "Overlaps a blocked time from availability settings",
+    };
+  }
+
+  const existingSessions = sessionsByWeek[event.weekStartDate] ?? [];
+  const overlappingSession = existingSessions.find((session) =>
+    sessionOverlapsEvent(event, session),
+  );
+
+  if (overlappingSession) {
+    return {
+      message: `Overlaps existing session: ${overlappingSession.title}`,
+    };
+  }
+
+  const overlappingImport = plannedEvents.find((planned) =>
+    sessionOverlapsEvent(event, planned),
+  );
+
+  if (overlappingImport) {
+    return {
+      message: `Overlaps another imported event: ${overlappingImport.title}`,
+    };
+  }
+
+  return null;
+};
+
+const appendImportedEventsToWeekMap = (sessionsByWeek, events) => {
+  const next = { ...sessionsByWeek };
+  for (const event of events) {
+    next[event.weekStartDate] = [...(next[event.weekStartDate] ?? []), event];
+  }
+  return next;
+};
+
+const circularDayDistance = (dayA, dayB) => {
+  const diff = Math.abs(Number(dayA) - Number(dayB));
+  return Math.min(diff, 7 - diff);
+};
+
+const getDaySessions = ({ weekStartDate, day, sessionsByWeek, plannedEvents }) => [
+  ...(sessionsByWeek[weekStartDate] ?? []),
+  ...plannedEvents,
+].filter(
+  (session) =>
+    session.weekStartDate === weekStartDate && getSessionDay(session) === Number(day),
+);
+
+const getDayLoadHours = (args) =>
+  getDaySessions(args).reduce(
+    (sum, session) => sum + getSessionDuration(session),
+    0,
+  );
+
+const scoreSuggestedSlot = ({
+  candidate,
+  original,
+  daySessions,
+  maxStudyHoursPerDay,
+}) => {
+  const dayDistance = circularDayDistance(candidate.day, original.day);
+  const timeDistance = Math.abs(Number(candidate.start) - Number(original.start));
+  const totalHoursAfterAdd =
+    daySessions.reduce((sum, session) => sum + getSessionDuration(session), 0) +
+    Number(candidate.duration);
+  const loadRatio = totalHoursAfterAdd / maxStudyHoursPerDay;
+
+  let score = 100;
+  if (Number(candidate.day) === Number(original.day)) score += 25;
+  score -= dayDistance * 20;
+  score -= timeDistance * 8;
+  score -= daySessions.length * 5;
+  score -= Math.pow(loadRatio, 2) * 15;
+  if (candidate.start >= 18) score -= 10;
+  return score;
+};
+
+const suggestImportedEventSlot = ({
+  event,
+  sessionsByWeek,
+  blockedSlots,
+  plannedEvents = [],
+  maxStudyHoursPerDay,
+}) => {
+  const candidates = [];
+  const otherPlannedEvents = plannedEvents.filter(
+    (planned) => planned.importId !== event.importId,
+  );
+
+  for (let day = 0; day < 7; day += 1) {
+    for (let start = SUGGEST_START_HOUR; start < SUGGEST_END_HOUR; start += 0.5) {
+      const candidate = { ...event, day, start };
+      if (candidate.start + candidate.duration > SUGGEST_END_HOUR) continue;
+
+      const conflict = findImportedEventConflict({
+        event: candidate,
+        sessionsByWeek,
+        blockedSlots,
+        plannedEvents: otherPlannedEvents,
+      });
+      if (conflict) continue;
+
+      const daySessions = getDaySessions({
+        weekStartDate: candidate.weekStartDate,
+        day: candidate.day,
+        sessionsByWeek,
+        plannedEvents: otherPlannedEvents,
+      });
+      const totalHoursAfterAdd =
+        getDayLoadHours({
+          weekStartDate: candidate.weekStartDate,
+          day: candidate.day,
+          sessionsByWeek,
+          plannedEvents: otherPlannedEvents,
+        }) + Number(candidate.duration);
+
+      if (totalHoursAfterAdd > maxStudyHoursPerDay) continue;
+
+      candidates.push({
+        event: candidate,
+        score: scoreSuggestedSlot({
+          candidate,
+          original: event,
+          daySessions,
+          maxStudyHoursPerDay,
+        }),
+      });
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0]?.event ?? null;
+};
 
 export default function Planner() {
   const { subjects, refetch: refetchSubjects } = useSubjects();
@@ -144,18 +334,18 @@ export default function Planner() {
     isLoading: blockedLoading,
     error: blockedError,
   } = useBlockedSlotsQuery();
+  const { data: preferences, isLoading: preferencesLoading } =
+    useUserPreferencesQuery();
   const { setSessions } = usePlannerWeekCache(weekStartDate);
 
-  const hasInitiallyLoaded = useRef(false);
-
-  useEffect(() => {
-    if (!sessionsLoading && !blockedLoading) {
-      hasInitiallyLoaded.current = true;
-    }
-  }, [sessionsLoading, blockedLoading]);
-
-  const showInitialLoader =
-    !hasInitiallyLoaded.current && (sessionsLoading || blockedLoading);
+  const showInitialLoader = sessionsLoading || blockedLoading;
+  const rawMaxStudyHoursPerDay = Number(
+    preferences?.maxStudyHoursPerDay ?? DEFAULT_MAX_STUDY_HOURS_PER_DAY,
+  );
+  const maxStudyHoursPerDay =
+    Number.isFinite(rawMaxStudyHoursPerDay) && rawMaxStudyHoursPerDay > 0
+      ? rawMaxStudyHoursPerDay
+      : DEFAULT_MAX_STUDY_HOURS_PER_DAY;
 
   const reloadWeek = () => {
     refetchSessions();
@@ -200,6 +390,10 @@ export default function Planner() {
   const [showAiPlan, setShowAiPlan] = useState(false);
   const [clearAllOpen, setClearAllOpen] = useState(false);
   const [clearingAll, setClearingAll] = useState(false);
+  const [icsPreview, setIcsPreview] = useState(null);
+  const [icsResolveMode, setIcsResolveMode] = useState(false);
+  const [icsResolvedEvents, setIcsResolvedEvents] = useState([]);
+  const [icsImporting, setIcsImporting] = useState(false);
 
   const [addForm, setAddForm] = useState({
     title: "",
@@ -457,6 +651,259 @@ export default function Planner() {
     );
   };
 
+  const buildICSPreview = async (events) => {
+    const weekStartDates = [...new Set(events.map((event) => event.weekStartDate))];
+    const weekResults = await Promise.all(
+      weekStartDates.map(async (date) => [date, await getPlannerSessions(date)]),
+    );
+
+    const sessionsByWeek = {};
+    for (const [date, result] of weekResults) {
+      if (!result.success) {
+        throw new Error(result.message || "Could not check existing planner sessions");
+      }
+      sessionsByWeek[date] = result.data ?? [];
+    }
+
+    const importedEvents = events.map((event, index) => ({
+      ...event,
+      importId: `${event.weekStartDate}-${event.day}-${event.start}-${index}`,
+    }));
+    const available = [];
+    const conflicts = [];
+
+    for (const event of importedEvents) {
+      const conflict = findImportedEventConflict({
+        event,
+        sessionsByWeek,
+        blockedSlots,
+        plannedEvents: available,
+      });
+
+      if (conflict) {
+        conflicts.push({ ...event, conflict });
+      } else {
+        available.push(event);
+      }
+    }
+
+    setIcsPreview({
+      total: importedEvents.length,
+      available,
+      conflicts,
+      sessionsByWeek,
+      importedCount: 0,
+    });
+    setIcsResolvedEvents(
+      conflicts.map((event) => ({
+        title: event.title,
+        day: event.day,
+        start: event.start,
+        duration: event.duration,
+        color: event.color,
+        weekStartDate: event.weekStartDate,
+        source: event.source,
+        importId: event.importId,
+      })),
+    );
+    setIcsResolveMode(false);
+  };
+
+  const closeICSPreview = (force = false) => {
+    if (icsImporting && !force) return;
+    setIcsPreview(null);
+    setIcsResolveMode(false);
+    setIcsResolvedEvents([]);
+  };
+
+  const resolveConflictIssue = (event, index) => {
+    if (!icsPreview) return null;
+
+    const plannedEvents = [
+      ...icsPreview.available,
+      ...icsResolvedEvents.filter((_, i) => i !== index),
+    ];
+
+    return findImportedEventConflict({
+      event,
+      sessionsByWeek: icsPreview.sessionsByWeek,
+      blockedSlots,
+      plannedEvents,
+    });
+  };
+
+  const resolvedConflictIssues = icsResolveMode
+    ? icsResolvedEvents.map((event, index) => resolveConflictIssue(event, index))
+    : [];
+  const hasUnresolvedConflicts = resolvedConflictIssues.some(Boolean);
+
+  const importICSEvents = async (eventsToImport) => {
+    if (eventsToImport.length === 0) {
+      toast.error("No sessions available to import");
+      return { created: 0, succeeded: [], failures: [] };
+    }
+
+    setIcsImporting(true);
+    let created = 0;
+    const succeeded = [];
+    const failures = [];
+
+    for (const event of eventsToImport) {
+      const result = await createPlannerSession(event, event.weekStartDate);
+
+      if (result.success) {
+        created += 1;
+        succeeded.push(event);
+      } else {
+        failures.push({
+          title: event.title,
+          message: result.message || "Failed to create planner session",
+        });
+      }
+    }
+
+    setIcsImporting(false);
+
+    if (created > 0) {
+      queryClient.invalidateQueries({ queryKey: ["planner"] });
+      reloadWeek();
+      toast.success(
+        failures.length > 0
+          ? `Imported ${created} of ${eventsToImport.length} session(s)`
+          : `Imported ${created} session(s) from ICS`,
+      );
+    }
+
+    if (failures.length > 0) {
+      toast.error(`${failures.length} session(s) could not be imported`, {
+        description: failures
+          .slice(0, 5)
+          .map((failure) => `${failure.title}: ${failure.message}`)
+          .join("\n"),
+        duration: 8000,
+      });
+    }
+
+    return { created, succeeded, failures };
+  };
+
+  const handleImportAvailableICS = async () => {
+    if (!icsPreview) return;
+    const { created, succeeded } = await importICSEvents(icsPreview.available);
+    if (created === 0) return;
+
+    const succeededIds = new Set(succeeded.map((event) => event.importId));
+    const nextAvailable = icsPreview.available.filter(
+      (event) => !succeededIds.has(event.importId),
+    );
+    const nextConflicts = icsPreview.conflicts;
+    const nextPreview = {
+      ...icsPreview,
+      available: nextAvailable,
+      sessionsByWeek: appendImportedEventsToWeekMap(
+        icsPreview.sessionsByWeek,
+        succeeded,
+      ),
+      importedCount: (icsPreview.importedCount ?? 0) + created,
+    };
+
+    setIcsPreview(nextPreview);
+
+    if (nextAvailable.length === 0 && nextConflicts.length === 0) {
+      closeICSPreview(true);
+    }
+  };
+
+  const handleImportResolvedICS = async () => {
+    if (!icsPreview || hasUnresolvedConflicts) return;
+    const { created, succeeded } = await importICSEvents(icsResolvedEvents);
+    if (created === 0) return;
+
+    const succeededIds = new Set(succeeded.map((event) => event.importId));
+    const nextResolvedEvents = icsResolvedEvents.filter(
+      (event) => !succeededIds.has(event.importId),
+    );
+    const nextConflicts = icsPreview.conflicts.filter(
+      (event) => !succeededIds.has(event.importId),
+    );
+    const nextPreview = {
+      ...icsPreview,
+      conflicts: nextConflicts,
+      sessionsByWeek: appendImportedEventsToWeekMap(
+        icsPreview.sessionsByWeek,
+        succeeded,
+      ),
+      importedCount: (icsPreview.importedCount ?? 0) + created,
+    };
+
+    setIcsPreview(nextPreview);
+    setIcsResolvedEvents(nextResolvedEvents);
+
+    if (nextPreview.available.length === 0 && nextConflicts.length === 0) {
+      closeICSPreview(true);
+    } else {
+      setIcsResolveMode(false);
+    }
+  };
+
+  const getSuggestedICSConflict = (event, resolvedEvents = icsResolvedEvents) => {
+    if (!icsPreview) return null;
+
+    return suggestImportedEventSlot({
+      event,
+      sessionsByWeek: icsPreview.sessionsByWeek,
+      blockedSlots,
+      plannedEvents: [...icsPreview.available, ...resolvedEvents],
+      maxStudyHoursPerDay,
+    });
+  };
+
+  const handleSuggestICSConflict = (index) => {
+    const event = icsResolvedEvents[index];
+    if (!event) return;
+
+    const suggested = getSuggestedICSConflict(event);
+    if (!suggested) {
+      toast.error(
+        `No suggested slot found within your ${maxStudyHoursPerDay}h daily limit`,
+      );
+      return;
+    }
+
+    setIcsResolvedEvents((prev) =>
+      prev.map((item, i) => (i === index ? suggested : item)),
+    );
+    toast.success(`Suggested ${formatImportedEventTime(suggested)}`);
+  };
+
+  const handleSuggestAllICSConflicts = () => {
+    if (!icsPreview || icsResolvedEvents.length === 0) return;
+
+    let suggestedCount = 0;
+    const nextResolvedEvents = [...icsResolvedEvents];
+
+    for (let index = 0; index < nextResolvedEvents.length; index += 1) {
+      const suggested = getSuggestedICSConflict(
+        nextResolvedEvents[index],
+        nextResolvedEvents,
+      );
+
+      if (!suggested) continue;
+      nextResolvedEvents[index] = suggested;
+      suggestedCount += 1;
+    }
+
+    setIcsResolvedEvents(nextResolvedEvents);
+
+    if (suggestedCount > 0) {
+      toast.success(`Suggested new times for ${suggestedCount} conflict(s)`);
+    } else {
+      toast.error(
+        `No suggested slots found within your ${maxStudyHoursPerDay}h daily limit`,
+      );
+    }
+  };
+
   const handleICSImport = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -478,68 +925,9 @@ export default function Planner() {
           return;
         }
 
-        let created = 0;
-        const failures = [];
-
-        for (const evn of events) {
-          const result = await createPlannerSession(evn, evn.weekStartDate);
-
-          if (result.success) {
-            created += 1;
-          } else {
-            const apiMessage = result.message || "Failed to create planner session";
-            const apiDetail = result.error?.errors ?? result.error?.message;
-            failures.push({
-              title: evn.title,
-              message:
-                apiDetail && apiMessage !== apiDetail
-                  ? `${apiMessage}: ${apiDetail}`
-                  : apiMessage,
-            });
-          }
-        }
-
-        const failed = failures.length;
-        const total = events.length;
-        const failureSummary = (() => {
-          const byMessage = new Map();
-          for (const { title, message } of failures) {
-            if (!byMessage.has(message)) {
-              byMessage.set(message, []);
-            }
-            byMessage.get(message).push(title);
-          }
-          return [...byMessage.entries()]
-            .slice(0, 5)
-            .map(([message, titles]) => {
-              const count = titles.length;
-              if (count === 1) {
-                return `${titles[0]}: ${message}`;
-              }
-              return `${count} events: ${message}`;
-            })
-            .join("\n");
-        })();
-
-        if (created > 0) {
-          toast.success(
-            failed > 0
-              ? `Imported ${created} of ${total} event(s)`
-              : `Schedule imported! ${created} event(s) added 🎉`,
-          );
-          reloadWeek();
-        }
-
-        if (failed > 0) {
-          toast.error(
-            created > 0
-              ? `${failed} event(s) could not be imported`
-              : `Could not import events (0 of ${total})`,
-            { description: failureSummary, duration: 8000 },
-          );
-        }
-      } catch {
-        toast.error("Could not parse the .ics file");
+        await buildICSPreview(events);
+      } catch (error) {
+        toast.error(error.message || "Could not parse the .ics file");
       }
     };
     reader.readAsText(file);
@@ -617,7 +1005,7 @@ export default function Planner() {
 
       <div
         className={`bg-card rounded-2xl shadow-soft border border-border/50 overflow-hidden transition-opacity duration-150 ${
-          sessionsFetching && hasInitiallyLoaded.current ? "opacity-60" : ""
+          sessionsFetching && !sessionsLoading ? "opacity-60" : ""
         }`}
       >
         <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-border/50 bg-muted/30">
@@ -699,7 +1087,7 @@ export default function Planner() {
                                         className="fixed inset-0 z-20"
                                         onClick={() => setActiveMenuId(null)}
                                       />
-                                      <motion.div
+                                      <Motion.div
                                         initial={{ opacity: 0, scale: 0.9 }}
                                         animate={{ opacity: 1, scale: 1 }}
                                         exit={{ opacity: 0, scale: 0.9 }}
@@ -720,7 +1108,7 @@ export default function Planner() {
                                         >
                                           <Trash2 className="h-3 w-3" /> Delete
                                         </button>
-                                      </motion.div>
+                                      </Motion.div>
                                     </>
                                   )}
                                 </AnimatePresence>
@@ -795,6 +1183,289 @@ export default function Planner() {
       </AlertDialog>
 
       <AnimatePresence>
+        {icsPreview && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-foreground/20 backdrop-blur-sm"
+              onClick={closeICSPreview}
+              aria-hidden
+            />
+            <Motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative bg-card rounded-2xl p-6 shadow-soft-lg w-full max-w-2xl z-10 border border-border max-h-[85vh] overflow-y-auto"
+            >
+              <button
+                type="button"
+                onClick={closeICSPreview}
+                disabled={icsImporting}
+                className="absolute top-4 right-4 text-muted-foreground hover:text-foreground disabled:opacity-50"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+              {!icsResolveMode ? (
+                <>
+                  <h2 className="text-lg font-display font-semibold text-foreground mb-2">
+                    Import ICS schedule?
+                  </h2>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Review what can be imported before adding sessions to your planner.
+                  </p>
+                  {icsPreview.importedCount > 0 ? (
+                    <div className="rounded-xl bg-primary/10 text-primary text-sm p-3 mb-4">
+                      {icsPreview.importedCount} session
+                      {icsPreview.importedCount === 1 ? "" : "s"} imported so far.
+                      You can continue resolving or importing the remaining sessions.
+                    </div>
+                  ) : null}
+
+                  <div className="grid sm:grid-cols-3 gap-3 mb-5">
+                    <div className="rounded-xl bg-secondary/50 p-3">
+                      <p className="text-2xl font-bold text-foreground">
+                        {icsPreview.total}
+                      </p>
+                      <p className="text-xs text-muted-foreground">sessions found</p>
+                    </div>
+                    <div className="rounded-xl bg-accent/10 p-3">
+                      <p className="text-2xl font-bold text-accent">
+                        {icsPreview.available.length}
+                      </p>
+                      <p className="text-xs text-muted-foreground">can be imported</p>
+                    </div>
+                    <div className="rounded-xl bg-destructive/10 p-3">
+                      <p className="text-2xl font-bold text-destructive">
+                        {icsPreview.conflicts.length}
+                      </p>
+                      <p className="text-xs text-muted-foreground">conflict</p>
+                    </div>
+                  </div>
+
+                  {icsPreview.conflicts.length > 0 ? (
+                    <div className="space-y-2 mb-5">
+                      <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                        Conflicting sessions
+                      </p>
+                      {icsPreview.conflicts.slice(0, 5).map((event, index) => (
+                        <div
+                          key={`${event.title}-${event.weekStartDate}-${event.day}-${event.start}-${index}`}
+                          className="rounded-xl border border-destructive/20 bg-destructive/5 p-3"
+                        >
+                          <p className="text-sm font-medium text-foreground">
+                            {event.title}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatImportedEventTime(event)}
+                          </p>
+                          <p className="text-xs text-destructive mt-1">
+                            {event.conflict.message}
+                          </p>
+                        </div>
+                      ))}
+                      {icsPreview.conflicts.length > 5 ? (
+                        <p className="text-xs text-muted-foreground">
+                          +{icsPreview.conflicts.length - 5} more conflict(s)
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl bg-accent/10 text-accent text-sm p-3 mb-5">
+                      No conflicts detected. All sessions are ready to import.
+                    </div>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row sm:justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={closeICSPreview}
+                      disabled={icsImporting}
+                      className="h-10 px-4 rounded-full bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIcsResolveMode(true)}
+                      disabled={icsImporting || icsPreview.conflicts.length === 0}
+                      className="h-10 px-4 rounded-full border border-border text-sm font-medium hover:bg-secondary disabled:opacity-50"
+                    >
+                      Resolve conflicts
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleImportAvailableICS}
+                      disabled={icsImporting || icsPreview.available.length === 0}
+                      className="h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+                    >
+                      {icsImporting
+                        ? "Importing..."
+                        : `Import ${icsPreview.available.length} available session${
+                            icsPreview.available.length === 1 ? "" : "s"
+                          }`}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-lg font-display font-semibold text-foreground mb-2">
+                    Resolve ICS conflicts
+                  </h2>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Pick a new day and start time for each conflicting session. Duration stays the same.
+                  </p>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl bg-secondary/50 p-3 mb-4">
+                    <p className="text-xs text-muted-foreground">
+                      Auto suggestions only use slots that respect your{" "}
+                      {maxStudyHoursPerDay}h/day study limit.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleSuggestAllICSConflicts}
+                      disabled={icsImporting || preferencesLoading}
+                      className="h-8 px-3 rounded-full bg-primary text-primary-foreground text-xs font-medium disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      Auto suggest all
+                    </button>
+                  </div>
+                  {icsPreview.available.length > 0 ? (
+                    <div className="rounded-xl bg-accent/10 text-accent text-sm p-3 mb-4">
+                      {icsPreview.available.length} non-conflicting session
+                      {icsPreview.available.length === 1 ? "" : "s"} are still pending.
+                      Go back after resolving conflicts to import them too.
+                    </div>
+                  ) : null}
+
+                  <div className="space-y-3 mb-5">
+                    {icsResolvedEvents.map((event, index) => {
+                      const issue = resolvedConflictIssues[index];
+                      const original = icsPreview.conflicts[index];
+
+                      return (
+                        <div
+                          key={`${event.title}-${event.weekStartDate}-${index}`}
+                          className="rounded-xl border border-border bg-background/60 p-3 space-y-3"
+                        >
+                          <div>
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-medium text-foreground">
+                                {event.title}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => handleSuggestICSConflict(index)}
+                                disabled={icsImporting || preferencesLoading}
+                                className="h-7 px-2 rounded-full bg-secondary text-secondary-foreground text-[11px] font-medium disabled:opacity-50 inline-flex items-center gap-1 shrink-0"
+                              >
+                                <Sparkles className="h-3 w-3" />
+                                Suggest
+                              </button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Original: {formatImportedEventTime(original)}
+                            </p>
+                            <p className="text-xs text-destructive mt-1">
+                              {original.conflict.message}
+                            </p>
+                          </div>
+
+                          <div className="grid sm:grid-cols-2 gap-2">
+                            <select
+                              value={event.day}
+                              onChange={(e) =>
+                                setIcsResolvedEvents((prev) =>
+                                  prev.map((item, i) =>
+                                    i === index
+                                      ? { ...item, day: Number(e.target.value) }
+                                      : item,
+                                  ),
+                                )
+                              }
+                              className="h-10 rounded-xl bg-card px-3 text-sm text-foreground border border-border outline-none"
+                            >
+                              {days.map((day, dayIndex) => (
+                                <option key={day} value={dayIndex}>
+                                  {day}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              value={event.start}
+                              onChange={(e) =>
+                                setIcsResolvedEvents((prev) =>
+                                  prev.map((item, i) =>
+                                    i === index
+                                      ? { ...item, start: Number(e.target.value) }
+                                      : item,
+                                  ),
+                                )
+                              }
+                              className="h-10 rounded-xl bg-card px-3 text-sm text-foreground border border-border outline-none"
+                            >
+                              {hours.flatMap((hour) => [
+                                <option key={hour} value={hour}>
+                                  {hour}:00
+                                </option>,
+                                <option key={`${hour}-30`} value={hour + 0.5}>
+                                  {hour}:30
+                                </option>,
+                              ])}
+                            </select>
+                          </div>
+
+                          <p
+                            className={`text-xs ${
+                              issue ? "text-destructive" : "text-accent"
+                            }`}
+                          >
+                            {issue
+                              ? issue.message
+                              : `Ready: ${formatImportedEventTime(event)}`}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIcsResolveMode(false)}
+                      disabled={icsImporting}
+                      className="h-10 px-4 rounded-full bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 disabled:opacity-50"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={closeICSPreview}
+                      disabled={icsImporting}
+                      className="h-10 px-4 rounded-full border border-border text-sm font-medium hover:bg-secondary disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleImportResolvedICS}
+                      disabled={icsImporting || hasUnresolvedConflicts}
+                      className="h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+                    >
+                      {icsImporting
+                        ? "Importing..."
+                        : `Import ${icsResolvedEvents.length} resolved conflict${
+                            icsResolvedEvents.length === 1 ? "" : "s"
+                          }`}
+                    </button>
+                  </div>
+                </>
+              )}
+            </Motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {(showAdd || editingSession) && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div
@@ -804,7 +1475,7 @@ export default function Planner() {
                 setEditingSession(null);
               }}
             />
-            <motion.div
+            <Motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
@@ -930,7 +1601,7 @@ export default function Planner() {
                   {editingSession ? "Save Changes" : "Create Session"}
                 </button>
               </div>
-            </motion.div>
+            </Motion.div>
           </div>
         )}
       </AnimatePresence>

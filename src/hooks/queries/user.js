@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getMe,
   getBlockedSlots,
+  getPreferences,
   replaceBlockedSlots,
 } from "@/services/userService";
 import { queryKeys } from "@/lib/query/queryKeys";
@@ -27,6 +28,14 @@ export function blockedSlotsQueryOptions() {
   };
 }
 
+export function userPreferencesQueryOptions() {
+  return {
+    queryKey: queryKeys.user.preferences,
+    queryFn: async () =>
+      unwrapServiceResult(await getPreferences(), "Failed to fetch preferences"),
+  };
+}
+
 export function useUserProfileQuery(options = {}) {
   const authEnabled = useAuthQueryEnabled();
   return useQuery({
@@ -49,6 +58,14 @@ export function useBlockedSlotsQuery(options = {}) {
     refetch: query.refetch,
     query,
   };
+}
+
+export function useUserPreferencesQuery(options = {}) {
+  const authEnabled = useAuthQueryEnabled();
+  return useQuery({
+    ...userPreferencesQueryOptions(),
+    enabled: authEnabled && (options.enabled ?? true),
+  });
 }
 
 export function useBlockedSlotsMutation() {
