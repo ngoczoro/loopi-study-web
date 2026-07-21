@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { User, Lock, Bell, Calendar, BookOpen, Timer } from "lucide-react";
 import loopyHappy from "@/assets/loopy-happy.png";
 import { useAuthStore } from "@/lib/authStore";
@@ -50,46 +50,56 @@ export default function Settings() {
   const [pomodoroDurationError, setPomodoroDurationError] = useState("");
   const [savingFocusPrefs, setSavingFocusPrefs] = useState(false);
 
-  const loadSettings = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [profileRes, prefsRes] = await Promise.all([
-        getMe(),
-        getPreferences(),
-      ]);
-
-      if (profileRes.success) {
-        setDisplayName(profileRes.data.fullName || "");
-        setEmail(profileRes.data.email || "");
-        setUser(profileRes.data);
-      } else {
-        toast.error(profileRes.message);
-      }
-
-      if (prefsRes.success) {
-        setNotificationSettings(
-          prefsRes.data.notifications || {
-            taskReminders: true,
-            sessionReminders: true,
-            deadlineAlerts: true,
-          },
-        );
-        setMaxStudyHoursPerDay(prefsRes.data.maxStudyHoursPerDay ?? 4);
-        setMaxStudyHoursError("");
-        setPomodoroDuration(prefsRes.data.pomodoroDuration ?? 25);
-        setPomodoroDurationError("");
-      } else {
-        toast.error(prefsRes.message);
-      }
-
-    } finally {
-      setLoading(false);
-    }
-  }, [setUser]);
-
   useEffect(() => {
+    let cancelled = false;
+
+    const loadSettings = async () => {
+      setLoading(true);
+      try {
+        const [profileRes, prefsRes] = await Promise.all([
+          getMe(),
+          getPreferences(),
+        ]);
+
+        // Ignore stale responses after unmount / StrictMode remount / newer save
+        if (cancelled) return;
+
+        if (profileRes.success) {
+          setDisplayName(profileRes.data.fullName || "");
+          setEmail(profileRes.data.email || "");
+          setUser(profileRes.data);
+        } else {
+          toast.error(profileRes.message);
+        }
+
+        if (prefsRes.success) {
+          setNotificationSettings(
+            prefsRes.data.notifications || {
+              taskReminders: true,
+              sessionReminders: true,
+              deadlineAlerts: true,
+            },
+          );
+          setMaxStudyHoursPerDay(prefsRes.data.maxStudyHoursPerDay ?? 4);
+          setMaxStudyHoursError("");
+          setPomodoroDuration(prefsRes.data.pomodoroDuration ?? 25);
+          setPomodoroDurationError("");
+        } else {
+          toast.error(prefsRes.message);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
     loadSettings();
-  }, [loadSettings]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setUser]);
 
   const isBlocked = (day, hour) =>
     blockedSlots.some((s) => s.day === day && s.hour === hour);
