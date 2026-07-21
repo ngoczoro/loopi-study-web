@@ -532,7 +532,10 @@ export default function Planner() {
   };
 
   const handleAddSession = async () => {
-    if (!addForm.title.trim()) return;
+    if (!addForm.title.trim()) {
+      toast.error("Please select a subject or enter a session title");
+      return;
+    }
 
     const subject =
       subjects.find((s) => s.id === addForm.subjectId) ||
@@ -1502,17 +1505,17 @@ export default function Planner() {
                     onChange={(e) => {
                       const sub = subjects.find((s) => s.id === e.target.value);
                       if (editingSession) {
-                        setEditForm({
-                          ...editForm,
+                        setEditForm((prev) => ({
+                          ...prev,
                           subjectId: e.target.value,
                           title: sub?.name || "",
-                        });
+                        }));
                       } else {
-                        setAddForm({
-                          ...addForm,
+                        setAddForm((prev) => ({
+                          ...prev,
                           subjectId: e.target.value,
                           title: sub?.name || "",
-                        });
+                        }));
                       }
                     }}
                     className="w-full h-10 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none"
@@ -1532,8 +1535,8 @@ export default function Planner() {
                     value={editingSession ? editForm.title : addForm.title}
                     onChange={(e) =>
                       editingSession
-                        ? setEditForm({ ...editForm, title: e.target.value })
-                        : setAddForm({ ...addForm, title: e.target.value })
+                        ? setEditForm((prev) => ({ ...prev, title: e.target.value }))
+                        : setAddForm((prev) => ({ ...prev, title: e.target.value }))
                     }
                     className="w-full h-10 rounded-xl bg-background px-4 text-sm text-foreground border border-border focus:ring-2 focus:ring-primary/20 outline-none"
                   />
@@ -1543,8 +1546,8 @@ export default function Planner() {
                   value={editingSession ? editForm.dayOfWeek : addForm.dayOfWeek}
                   onChange={(e) =>
                     editingSession
-                      ? setEditForm({ ...editForm, dayOfWeek: e.target.value })
-                      : setAddForm({ ...addForm, dayOfWeek: e.target.value })
+                      ? setEditForm((prev) => ({ ...prev, dayOfWeek: e.target.value }))
+                      : setAddForm((prev) => ({ ...prev, dayOfWeek: e.target.value }))
                   }
                   className="w-full h-10 rounded-xl bg-background px-3 text-sm text-foreground border border-border outline-none"
                 >
@@ -1559,8 +1562,8 @@ export default function Planner() {
                     value={editingSession ? editForm.startHour : addForm.startHour}
                     onChange={(e) =>
                       editingSession
-                        ? setEditForm({ ...editForm, startHour: e.target.value })
-                        : setAddForm({ ...addForm, startHour: e.target.value })
+                        ? setEditForm((prev) => ({ ...prev, startHour: e.target.value }))
+                        : setAddForm((prev) => ({ ...prev, startHour: e.target.value }))
                     }
                     className="h-10 rounded-xl bg-background px-3 text-sm text-foreground border border-border outline-none"
                   >
@@ -1579,11 +1582,14 @@ export default function Planner() {
                     }
                     onChange={(e) =>
                       editingSession
-                        ? setEditForm({
-                            ...editForm,
+                        ? setEditForm((prev) => ({
+                            ...prev,
                             durationHours: e.target.value,
-                          })
-                        : setAddForm({ ...addForm, durationHours: e.target.value })
+                          }))
+                        : setAddForm((prev) => ({
+                            ...prev,
+                            durationHours: e.target.value,
+                          }))
                     }
                     className="h-10 rounded-xl bg-background px-3 text-sm text-foreground border border-border outline-none"
                   >
