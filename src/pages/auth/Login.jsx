@@ -171,16 +171,19 @@ export default function Login() {
       resetForm();
       navigate(result.data.user.role === "admin" ? "/admin" : "/");
     } else {
-      // Better error messages for different scenarios
-      if (
-        result.message?.toLowerCase().includes("verify") ||
-        result.message?.toLowerCase().includes("email")
+      const message = result.message?.toLowerCase() ?? "";
+
+      if (message.includes("invalid")) {
+        toast.error("Invalid email or password");
+      } else if (message.includes("banned")) {
+        toast.error("This account has been banned");
+      } else if (message.includes("locked")) {
+        toast.error("This account has been locked");
+      } else if (
+        message.includes("verify") ||
+        message.includes("otp before logging")
       ) {
         toast.error("Please verify your email first");
-      } else if (result.message?.toLowerCase().includes("banned")) {
-        toast.error("This account has been banned");
-      } else if (result.message?.toLowerCase().includes("invalid")) {
-        toast.error("Invalid email or password");
       } else {
         toast.error(result.message || "Login failed");
       }
