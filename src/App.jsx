@@ -12,6 +12,8 @@ import Planner from "./pages/user/Planner";
 import Settings from "./pages/user/Settings";
 import Notifications from "./pages/user/Notifications";
 import Goals from "./pages/user/Goals";
+import Groups from "./pages/user/Groups";
+import GroupDetail from "./pages/user/GroupDetail";
 import AdminLayout from "./components/AdminLayout";
 import AdminContent from "./pages/admin/AdminContent";
 import AdminContentPreview from "./pages/admin/AdminContentPreview";
@@ -79,6 +81,8 @@ function App() {
             <Route path="/planner" element={<Planner />} />
             <Route path="/quiz" element={<Quiz />} />
             <Route path="/goals" element={<Goals />} />
+            <Route path="/groups" element={<Groups />} />
+            <Route path="/groups/:groupId" element={<GroupDetail />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<NotFound />} />

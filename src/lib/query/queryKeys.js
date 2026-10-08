@@ -38,6 +38,19 @@ export const queryKeys = {
   achievements: {
     badges: ["achievements", "badges"],
   },
+  groups: {
+    all: ["groups"],
+    detail: (groupId) => ["groups", groupId],
+    members: (groupId) => ["groups", groupId, "members"],
+    resources: (groupId) => ["groups", groupId, "resources"],
+    goals: (groupId) => ["groups", groupId, "goals"],
+    tasks: (groupId, filters = {}) => ["groups", groupId, "tasks", filters],
+    progress: (groupId) => ["groups", groupId, "progress"],
+  },
+  chat: {
+    messages: (groupId) => ["chat", groupId, "messages"],
+    shared: (groupId, type) => ["chat", groupId, "shared", type],
+  },
   adminContent: {
     subjects: (params = {}) => ["admin", "content-management", "subjects", params],
     items: (params = {}) => ["admin", "content-management", "items", params],

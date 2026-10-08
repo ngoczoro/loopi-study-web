@@ -10,6 +10,7 @@ import {
   Settings,
   LogOut,
   Brain,
+  Users,
 } from "lucide-react";
 import { NavLink } from "./NavLink";
 import { useNavigate } from "react-router-dom";
@@ -37,6 +38,7 @@ const navItems = [
   { title: "Notes", url: "/notes", icon: FileText },
   { title: "Quizzes", url: "/quiz", icon: Brain },
   { title: "Goals & Streak", url: "/goals", icon: Target },
+  { title: "Study Groups", url: "/groups", icon: Users },
   { title: "Notifications", url: "/notifications", icon: Bell },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
