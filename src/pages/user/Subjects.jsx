@@ -1243,6 +1243,18 @@ export default function Subjects() {
                   <Brain className="h-4 w-4" />
                   Generate Quiz with AI
                 </button>
+                {viewDoc.type !== "link" && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(`/assistant?documentId=${encodeURIComponent(viewDoc.id)}`)
+                    }
+                    className="inline-flex items-center justify-center gap-1.5 flex-1 h-10 rounded-full bg-primary/10 text-primary text-sm font-medium hover:bg-primary/20 transition-colors"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Ask AI
+                  </button>
+                )}
               </div>
 
               <div className="flex gap-2 mt-4">

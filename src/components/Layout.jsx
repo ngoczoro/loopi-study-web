@@ -2,6 +2,7 @@ import { SidebarProvider } from "@/components/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { TopBar } from "@/components/TopBar";
 import { FilePreviewModal } from "@/components/FilePreviewModal";
+import FloatingAssistantButton from "@/components/assistant/FloatingAssistantButton";
 
 export function Layout({ children }) {
   return (
@@ -16,6 +17,7 @@ export function Layout({ children }) {
         </div>
       </div>
       <FilePreviewModal />
+      <FloatingAssistantButton />
     </SidebarProvider>
   );
 }

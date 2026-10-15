@@ -12,6 +12,7 @@ import {
   Edit3,
   Loader2,
   Brain,
+  Sparkles,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAppStore } from "@/lib/store";
@@ -29,7 +30,7 @@ import {
   SUPPORTED_FILES_LABEL,
 } from "@/lib/content-utils";
 import { FilePreviewActions } from "@/components/FilePreviewActions";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -530,6 +531,15 @@ export default function Notes() {
                     <Brain className="h-3.5 w-3.5" />
                     Generate Quiz with AI
                   </button>
+                  {viewDoc.type !== "link" && (
+                    <Link
+                      to={`/assistant?documentId=${encodeURIComponent(viewDoc.id)}`}
+                      className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Ask AI about this document
+                    </Link>
+                  )}
                 </div>
               </div>
 

@@ -51,6 +51,11 @@ export const queryKeys = {
     messages: (groupId) => ["chat", groupId, "messages"],
     shared: (groupId, type) => ["chat", groupId, "shared", type],
   },
+  assistant: {
+    sources: ["assistant", "sources"],
+    conversations: ["assistant", "conversations"],
+    messages: (conversationId) => ["assistant", "conversations", conversationId, "messages"],
+  },
   adminContent: {
     subjects: (params = {}) => ["admin", "content-management", "subjects", params],
     items: (params = {}) => ["admin", "content-management", "items", params],
