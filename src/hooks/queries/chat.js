@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   useInfiniteQuery,
   useMutation,
@@ -6,6 +6,8 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { getAuthUser } from "@/lib/authSession";
+import { joinGroupChat, onSocketEvent } from "@/lib/socket";
+import { useSocketConnected } from "@/hooks/useSocket";
 import { queryKeys } from "@/lib/query/queryKeys";
 import { unwrapServiceResult } from "@/lib/query/unwrap";
 import { useAuthQueryEnabled } from "@/lib/query/useAuthQueryEnabled";
@@ -19,16 +21,62 @@ import {
 import { patchCachedGroup } from "./groups";
 
 const PAGE_SIZE = 30;
-// REST polling until the Socket.IO channel lands (FE-G5).
+// Fallback while the socket is disconnected (or in mock mode).
 const MESSAGES_POLL_MS = 5000;
+
+function toLastMessage(message) {
+  return {
+    id: message.id,
+    content: message.content,
+    attachmentCount: message.attachments?.length ?? 0,
+    sender: message.sender,
+    createdAt: message.createdAt,
+  };
+}
+
+function hasSharedContent(message) {
+  return Boolean(message.attachments?.length) || /https?:\/\//i.test(message.content ?? "");
+}
+
+function appendMessage(queryClient, message) {
+  updateNewestPage(queryClient, message.groupId, (items) => [
+    ...items.filter((item) => item.id !== message.id),
+    message,
+  ]);
+  if (hasSharedContent(message)) {
+    queryClient.invalidateQueries({ queryKey: ["chat", message.groupId, "shared"] });
+  }
+}
 
 /**
  * Pages are fetched newest-first (page 0 = latest messages) and each page is
  * ordered old → new, so `messages` reverses the pages before flattening.
+ *
+ * Live updates come from the `chat:message` socket event; REST polling only
+ * runs while the socket is disconnected.
  */
 export function useGroupMessages(groupId, options = {}) {
   const { enabled: enabledOption = true } = options;
   const authEnabled = useAuthQueryEnabled();
+  const queryClient = useQueryClient();
+  const socketConnected = useSocketConnected();
+  const enabled = authEnabled && enabledOption && Boolean(groupId);
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const leave = joinGroupChat(groupId);
+    const unsubscribe = onSocketEvent("chat:message", (message) => {
+      if (message?.groupId !== groupId) return;
+      // Before the first page loads, the initial fetch will include it anyway.
+      if (!queryClient.getQueryData(queryKeys.chat.messages(groupId))) return;
+      appendMessage(queryClient, message);
+      patchCachedGroup(queryClient, groupId, { lastMessage: toLastMessage(message) });
+    });
+    return () => {
+      unsubscribe();
+      leave();
+    };
+  }, [enabled, groupId, queryClient]);
 
   const query = useInfiniteQuery({
     queryKey: queryKeys.chat.messages(groupId),
@@ -42,9 +90,17 @@ export function useGroupMessages(groupId, options = {}) {
       ),
     initialPageParam: null,
     getNextPageParam: (lastPage) => lastPage?.nextCursor ?? undefined,
-    enabled: authEnabled && enabledOption && Boolean(groupId),
-    refetchInterval: MESSAGES_POLL_MS,
+    enabled,
+    refetchInterval: socketConnected ? false : MESSAGES_POLL_MS,
   });
+
+  // Catch up on anything sent while the socket was down.
+  const { refetch } = query;
+  const wasConnectedRef = useRef(socketConnected);
+  useEffect(() => {
+    if (socketConnected && !wasConnectedRef.current && enabled) refetch();
+    wasConnectedRef.current = socketConnected;
+  }, [socketConnected, enabled, refetch]);
 
   const messages = useMemo(
     () =>
@@ -116,23 +172,11 @@ export function useSendGroupMessage(groupId) {
         "Failed to send message",
       ),
     onSuccess: (message) => {
-      updateNewestPage(queryClient, groupId, (items) => [
-        ...items.filter((item) => item.id !== message.id),
-        message,
-      ]);
+      appendMessage(queryClient, { ...message, groupId: message.groupId ?? groupId });
       patchCachedGroup(queryClient, groupId, {
-        lastMessage: {
-          id: message.id,
-          content: message.content,
-          attachmentCount: message.attachments?.length ?? 0,
-          sender: message.sender,
-          createdAt: message.createdAt,
-        },
+        lastMessage: toLastMessage(message),
         unreadCount: 0,
       });
-      if (message.attachments?.length || /https?:\/\//i.test(message.content ?? "")) {
-        queryClient.invalidateQueries({ queryKey: ["chat", groupId, "shared"] });
-      }
     },
   });
 }

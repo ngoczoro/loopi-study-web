@@ -340,6 +340,28 @@ Một kết nối Socket.IO duy nhất cho cả app (`src/lib/socket.js`), xác 
 
 Gửi tin vẫn đi qua REST `POST /messages`; socket chỉ dùng để nhận tin mới.
 
+### Kết nối và xác thực
+
+- Server Socket.IO chạy chung port với REST (`http://localhost:5000`). FE tự lấy origin từ `VITE_API_BASE_URL`, hoặc đặt `VITE_SOCKET_URL` để ghi đè.
+- Thiếu token hoặc token sai → `connect_error` với `message = "unauthorized"`.
+- Khi access token hết hạn, server gửi `auth:expired` rồi ngắt kết nối. `socket.js` tự gọi refresh token qua REST rồi kết nối lại; các room đang tham gia được join lại tự động.
+- Mỗi socket tự vào room riêng `user:{userId}` để server gửi sự kiện tới đúng một người (dùng cho video call).
+- Bị xóa khỏi nhóm hoặc nhóm bị xóa → server đẩy socket khỏi room `group:{groupId}`.
+
+### API của `src/lib/socket.js` (cho video call)
+
+| Hàm | Dùng để |
+|---|---|
+| `onSocketEvent(event, handler)` | Nghe event, trả về hàm hủy. Gọi được cả trước khi socket kết nối. |
+| `emitWithAck(event, payload, timeoutMs?)` | Gửi event và chờ server ack; luôn resolve (`{ ok: false, message }` khi lỗi/timeout). |
+| `joinRoom(joinEvent, leaveEvent, payload)` | Vào room và tự vào lại sau khi reconnect; trả về `leave()`. Nhiều nơi cùng join thì chỉ rời khi nơi cuối gọi `leave()`. |
+| `getSocket()` | Lấy instance gốc khi cần API Socket.IO đầy đủ. |
+| `useSocketConnected()` (`src/hooks/useSocket.js`) | Hook React trả `true/false` theo trạng thái kết nối. |
+
+Kết nối do `useRealtimeConnection()` trong `Layout` quản lý (mở khi đăng nhập, đóng khi đăng xuất, tắt ở chế độ mock); component không tự gọi `connectSocket()`.
+
+Video call dùng tiền tố `call:` (ví dụ `call:join`, `call:offer`, `call:answer`, `call:ice-candidate`, `call:leave`). Handler phía server đăng ký giống chat: viết hàm `(io, socket) => { socket.on("call:...", ...) }` trong module của mình và thêm vào mảng handler của `initRealtime(httpServer, [...])` ở `server.js`. Trước khi cho vào room cuộc gọi phải kiểm tra thành viên bằng `getMembershipOrThrow(groupId, socket.data.user.userId)` import từ `src/modules/groups/index.js`.
+
 ## Notification types (FE-G6)
 
 Dùng module notifications có sẵn, thêm các `type`:

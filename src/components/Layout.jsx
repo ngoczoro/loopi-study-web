@@ -3,8 +3,11 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { TopBar } from "@/components/TopBar";
 import { FilePreviewModal } from "@/components/FilePreviewModal";
 import FloatingAssistantButton from "@/components/assistant/FloatingAssistantButton";
+import { useRealtimeConnection } from "@/hooks/useSocket";
 
 export function Layout({ children }) {
+  useRealtimeConnection();
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
