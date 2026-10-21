@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Flame,
@@ -7,6 +7,8 @@ import {
   BookOpen,
   Timer,
   ArrowDown,
+  Layers,
+  Brain,
 } from "lucide-react";
 import WeeklyTimeline from "../../components/WeeklyTimeline";
 import TodayTasks from "../../components/TodayTasks";
@@ -28,6 +30,9 @@ import {
   DEADLINE_LIST_SCROLL_MAX,
 } from "../../components/WidgetScrollArea";
 import AILearningResourcesPanel from "../../components/ai/AILearningResourcesPanel";
+import { useFlashcards } from "@/hooks/useFlashcards";
+import { isDue } from "@/lib/flashcards/schedule";
+import { getLatestQuizAttempt } from "@/services/quizService";
 
 export default function Dashboard() {
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -40,6 +45,24 @@ export default function Dashboard() {
   const fetchTaskSummary = useAppStore((s) => s.fetchTaskSummary);
   const fetchTasks = useAppStore((s) => s.fetchTasks);
   const fetchSubjects = useAppStore((s) => s.fetchSubjects);
+  const quizzes = useAppStore((s) => s.quizzes);
+  const quizzesLoading = useAppStore((s) => s.quizzesLoading);
+  const quizzesError = useAppStore((s) => s.quizzesError);
+  const fetchQuizzes = useAppStore((s) => s.fetchQuizzes);
+  const { decks, cards } = useFlashcards();
+  const [quizzesReady, setQuizzesReady] = useState(false);
+
+  const dueCards = cards.filter((card) => isDue(card));
+  const dueDeckIds = [...new Set(dueCards.map((card) => card.deckId))];
+  const dueHref =
+    dueDeckIds.length === 1 ? `/flashcards/${dueDeckIds[0]}/study` : "/flashcards";
+
+  const [quizQueue, setQuizQueue] = useState({
+    status: "loading",
+    undone: 0,
+    total: 0,
+    onlyId: null,
+  });
 
   const today = todayDateString();
   const todayTasks = useMemo(
@@ -64,6 +87,66 @@ export default function Dashboard() {
     fetchTaskSummary();
     fetchTasks({ dueDate: today, limit: 50 });
   }, [accessToken, fetchSubjects, fetchTaskSummary, fetchTasks, today]);
+
+  useEffect(() => {
+    if (!accessToken) return undefined;
+    let cancelled = false;
+    (async () => {
+      await fetchQuizzes();
+      if (!cancelled) setQuizzesReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, fetchQuizzes]);
+
+  useEffect(() => {
+    if (!accessToken || !quizzesReady || quizzesLoading) return undefined;
+
+    let cancelled = false;
+
+    (async () => {
+      if (quizzesError && quizzes.length === 0) {
+        setQuizQueue({ status: "error", undone: 0, total: 0, onlyId: null });
+        return;
+      }
+
+      if (quizzes.length === 0) {
+        setQuizQueue({ status: "ready", undone: 0, total: 0, onlyId: null });
+        return;
+      }
+
+      const results = await Promise.all(
+        quizzes.map((quiz) => getLatestQuizAttempt(quiz.id)),
+      );
+      if (cancelled) return;
+
+      const pending = [];
+      let failed = 0;
+      quizzes.forEach((quiz, index) => {
+        const result = results[index];
+        if (result?.success && result.data) return;
+        if (result?.notFound) pending.push(quiz.id);
+        else failed += 1;
+      });
+
+      if (failed === quizzes.length) {
+        setQuizQueue({ status: "error", undone: 0, total: quizzes.length, onlyId: null });
+        return;
+      }
+
+      setQuizQueue({
+        status: "ready",
+        undone: pending.length,
+        total: quizzes.length,
+        onlyId: pending.length === 1 ? pending[0] : null,
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, quizzesReady, quizzes, quizzesLoading, quizzesError]);
 
   const upcomingItems = useMemo(
     () => getUpcomingDeadlineTasks(taskSummary, { limit: 20, today }),
@@ -215,6 +298,57 @@ export default function Dashboard() {
             </WidgetScrollArea>
           )}
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Link
+          to={dueHref}
+          className="bg-card rounded-2xl p-5 shadow-sm border border-border hover:shadow-soft transition-shadow"
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <Layers className="h-4 w-4 text-primary" strokeWidth={2} />
+            <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+              Due cards
+            </span>
+          </div>
+          <p className="text-2xl font-bold text-foreground">{dueCards.length}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {dueCards.length === 0
+              ? decks.length === 0
+                ? "No decks yet"
+                : "You're caught up"
+              : "Ready to review"}
+          </p>
+        </Link>
+        <Link
+          to={
+            quizQueue.onlyId
+              ? { pathname: "/quiz", state: { activeQuizId: quizQueue.onlyId } }
+              : "/quiz"
+          }
+          className="bg-card rounded-2xl p-5 shadow-sm border border-border hover:shadow-soft transition-shadow"
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <Brain className="h-4 w-4 text-primary" strokeWidth={2} />
+            <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+              Quizzes to take
+            </span>
+          </div>
+          <p className="text-2xl font-bold text-foreground">
+            {quizQueue.status === "loading" ? "…" : quizQueue.status === "error" ? "—" : quizQueue.undone}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {quizQueue.status === "loading"
+              ? "Checking your quizzes"
+              : quizQueue.status === "error"
+                ? "Couldn't load quizzes"
+                : quizQueue.total === 0
+                  ? "No quizzes yet"
+                  : quizQueue.undone === 0
+                    ? "All caught up"
+                    : "Not started yet"}
+          </p>
+        </Link>
       </div>
 
       <div className="bg-card rounded-2xl p-5 shadow-sm border border-border flex flex-col min-h-0 overflow-hidden">

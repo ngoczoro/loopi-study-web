@@ -11,9 +11,9 @@ import {
   LogOut,
   Brain,
   Users,
+  Layers,
 } from "lucide-react";
 import { NavLink } from "./NavLink";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import loopyHappy from "../assets/loopy-happy.png";
 import { toast } from "sonner";
@@ -37,6 +37,7 @@ const navItems = [
   { title: "Pomodoro Timer", url: "/pomodoro", icon: Timer },
   { title: "Notes", url: "/notes", icon: FileText },
   { title: "Quizzes", url: "/quiz", icon: Brain },
+  { title: "Flashcards", url: "/flashcards", icon: Layers },
   { title: "Goals & Streak", url: "/goals", icon: Target },
   { title: "Study Groups", url: "/groups", icon: Users },
   { title: "Notifications", url: "/notifications", icon: Bell },
@@ -46,7 +47,6 @@ const navItems = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
-  const navigate = useNavigate();
   const { logout } = useAuth();
 
   const handleLogout = async () => {

@@ -5,6 +5,9 @@ import Login from "./pages/auth/Login";
 import Progress from "./pages/user/Progress";
 import Notes from "./pages/user/Notes";
 import Quiz from "./pages/user/Quiz";
+import Flashcards from "./pages/user/Flashcards";
+import FlashcardDeck from "./pages/user/FlashcardDeck";
+import FlashcardStudy from "./pages/user/FlashcardStudy";
 import Pomodoro from "./pages/user/Pomodoro";
 import Dashboard from "./pages/user/Dashboard";
 import Subjects from "./pages/user/Subjects";
@@ -81,6 +84,9 @@ function App() {
             <Route path="/notes" element={<Notes />} />
             <Route path="/planner" element={<Planner />} />
             <Route path="/quiz" element={<Quiz />} />
+            <Route path="/flashcards" element={<Flashcards />} />
+            <Route path="/flashcards/:deckId" element={<FlashcardDeck />} />
+            <Route path="/flashcards/:deckId/study" element={<FlashcardStudy />} />
             <Route path="/goals" element={<Goals />} />
             <Route path="/groups" element={<Groups />} />
             <Route path="/groups/:groupId" element={<GroupDetail />} />
