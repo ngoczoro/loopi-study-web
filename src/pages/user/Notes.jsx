@@ -13,6 +13,7 @@ import {
   Loader2,
   Brain,
   Sparkles,
+  Layers,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAppStore } from "@/lib/store";
@@ -21,6 +22,7 @@ import { toast } from "sonner";
 import AIDocumentSummary from "@/components/ai/AIDocumentSummary";
 import AIDocumentSearchPanel from "@/components/ai/AIDocumentSearchPanel";
 import AIQuizGenerator from "@/components/ai/AIQuizGenerator";
+import AIFlashcardGenerator from "@/components/ai/AIFlashcardGenerator";
 import {
   isValidUrl,
   normalizeSubjectId,
@@ -30,7 +32,10 @@ import {
   SUPPORTED_FILES_LABEL,
 } from "@/lib/content-utils";
 import { FilePreviewActions } from "@/components/FilePreviewActions";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useFlashcards } from "@/hooks/useFlashcards";
+import { draftCardsFromNote } from "@/lib/flashcards/draftFromNote";
+import ImportNoteModal from "@/components/flashcards/ImportNoteModal";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,6 +54,8 @@ const defaultForm = { title: "", subjectId: "", content: "", url: "" };
 export default function Notes() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { createDeck, createCards } = useFlashcards();
 
   const {
     content,
@@ -86,6 +93,8 @@ export default function Notes() {
 
   const [deleteId, setDeleteId] = useState(null);
   const [quizTargetDoc, setQuizTargetDoc] = useState(null);
+  const [flashcardNote, setFlashcardNote] = useState(null);
+  const [aiFlashcardNote, setAiFlashcardNote] = useState(null);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -288,6 +297,28 @@ export default function Notes() {
   const handleQuizCreated = (quiz) => {
     addQuiz(quiz);
     setViewDoc(null);
+  };
+
+  const openFlashcards = (note) => {
+    const drafts = draftCardsFromNote(note?.content ?? "");
+    if (drafts.length === 0) {
+      toast.error("This note doesn't have pairs or paragraphs that can become cards.");
+      return;
+    }
+    setFlashcardNote(note);
+  };
+
+  const handleFlashcardsCreated = (drafts, sourceContentId) => {
+    const deck = createDeck({
+      title: flashcardNote?.title?.trim() || "Untitled deck",
+      subjectId: flashcardNote?.subjectId ?? null,
+      sourceContentId,
+    });
+    createCards(deck.id, drafts);
+    toast.success(`Created "${deck.title}"`);
+    setFlashcardNote(null);
+    setViewDoc(null);
+    navigate(`/flashcards/${deck.id}`);
   };
 
   const tabs = [
@@ -531,6 +562,26 @@ export default function Notes() {
                     <Brain className="h-3.5 w-3.5" />
                     Generate Quiz with AI
                   </button>
+                  {viewDoc.type === "note" && (
+                    <button
+                      type="button"
+                      onClick={() => openFlashcards(viewDoc)}
+                      className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
+                    >
+                      <Layers className="h-3.5 w-3.5" />
+                      Create flashcards
+                    </button>
+                  )}
+                  {viewDoc.type === "note" && (
+                    <button
+                      type="button"
+                      onClick={() => setAiFlashcardNote(viewDoc)}
+                      className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Create flashcards with AI
+                    </button>
+                  )}
                   {viewDoc.type !== "link" && (
                     <Link
                       to={`/assistant?documentId=${encodeURIComponent(viewDoc.id)}`}
@@ -578,6 +629,28 @@ export default function Notes() {
         document={quizTargetDoc}
         subjectId={quizTargetDoc?.subjectId}
         onQuizCreated={handleQuizCreated}
+      />
+
+      {flashcardNote && (
+        <ImportNoteModal
+          notes={[flashcardNote]}
+          presetNote={flashcardNote}
+          onClose={() => setFlashcardNote(null)}
+          onImport={handleFlashcardsCreated}
+        />
+      )}
+
+      <AIFlashcardGenerator
+        key={aiFlashcardNote?.id ?? "ai-flashcards"}
+        open={Boolean(aiFlashcardNote)}
+        note={aiFlashcardNote}
+        onOpenChange={(next) => {
+          if (!next) setAiFlashcardNote(null);
+        }}
+        onCreated={() => {
+          setAiFlashcardNote(null);
+          setViewDoc(null);
+        }}
       />
 
       <AnimatePresence>

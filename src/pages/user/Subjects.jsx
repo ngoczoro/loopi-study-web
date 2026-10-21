@@ -19,10 +19,11 @@ import {
   Brain,
   Globe,
   Search,
+  Layers,
 } from "lucide-react";
 import { format, addDays, startOfDay } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/button";
@@ -40,6 +41,10 @@ import AILearningResourcesPanel from "@/components/ai/AILearningResourcesPanel";
 import AIDocumentSummary from "@/components/ai/AIDocumentSummary";
 import AIDocumentSearchPanel from "@/components/ai/AIDocumentSearchPanel";
 import AIQuizGenerator from "@/components/ai/AIQuizGenerator";
+import AIFlashcardGenerator from "@/components/ai/AIFlashcardGenerator";
+import DeckFormModal from "@/components/flashcards/DeckFormModal";
+import { useFlashcards } from "@/hooks/useFlashcards";
+import { isDue } from "@/lib/flashcards/schedule";
 import AiPlanWizard from "@/components/ai-plan/AiPlanWizard";
 import { AI_PLAN_MODES } from "@/lib/study-plan/types";
 import {
@@ -117,6 +122,7 @@ export default function Subjects() {
   } = useAppStore();
   const navigate = useNavigate();
   const location = useLocation();
+  const { decks, cards, createDeck } = useFlashcards();
   const consumedSubjectDeepLinkRef = useRef(null);
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -143,6 +149,8 @@ export default function Subjects() {
   const [replacementFile, setReplacementFile] = useState(null);
   const [viewDoc, setViewDoc] = useState(null);
   const [quizTargetDoc, setQuizTargetDoc] = useState(null);
+  const [aiFlashcardNote, setAiFlashcardNote] = useState(null);
+  const [creatingDeck, setCreatingDeck] = useState(false);
   const [editDoc, setEditDoc] = useState(null);
   const [editForm, setEditForm] = useState({
     title: "",
@@ -257,6 +265,7 @@ export default function Subjects() {
 
   const closeSubjectDrawer = useCallback(() => {
     setSelectedSubject(null);
+    setCreatingDeck(false);
     consumedSubjectDeepLinkRef.current = null;
     if (location.state?.subjectId) {
       navigate(location.pathname, { replace: true, state: {} });
@@ -608,6 +617,29 @@ export default function Subjects() {
   const subjectQuizzes = selectedSubject
     ? quizzes.filter((q) => q.subjectId === selectedSubject.id)
     : [];
+  const subjectDecks = selectedSubject
+    ? decks.filter(
+        (deck) => String(deck.subjectId) === String(selectedSubject.id),
+      )
+    : [];
+
+  const deckStats = (deckId) => {
+    const mine = cards.filter((card) => card.deckId === deckId);
+    return {
+      total: mine.length,
+      due: mine.filter((card) => isDue(card)).length,
+    };
+  };
+
+  const handleCreateSubjectDeck = ({ title, subjectId }) => {
+    const deck = createDeck({
+      title,
+      subjectId: subjectId || selectedSubject?.id || null,
+    });
+    toast.success(`Created "${deck.title}"`);
+    setCreatingDeck(false);
+    navigate(`/flashcards/${deck.id}`);
+  };
   const isEditBusy =
     isSubmitting || (editDoc?.type === "file" && contentUploading);
 
@@ -760,11 +792,23 @@ export default function Subjects() {
       {/* Subject Detail Sheet */}
       <Sheet
         open={!!selectedSubject}
+        modal={!creatingDeck}
         onOpenChange={(open) => {
           if (!open) closeSubjectDrawer();
         }}
       >
-        <SheetContent className="overflow-auto">
+        <SheetContent
+          className="overflow-auto"
+          onInteractOutside={(event) => {
+            if (creatingDeck) event.preventDefault();
+          }}
+          onFocusOutside={(event) => {
+            if (creatingDeck) event.preventDefault();
+          }}
+          onEscapeKeyDown={(event) => {
+            if (creatingDeck) event.preventDefault();
+          }}
+        >
           {selectedSubject && (
             <>
               <SheetHeader>
@@ -830,11 +874,18 @@ export default function Subjects() {
                     <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />{" "}
                     Generate Quiz
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreatingDeck(true)}
+                    className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-secondary text-secondary-foreground text-xs font-medium hover:bg-secondary/80"
+                  >
+                    <Layers className="h-3.5 w-3.5" strokeWidth={2} /> New deck
+                  </button>
                 </div>
 
                 <Accordion
                   type="multiple"
-                  defaultValue={["documents", "quizzes"]}
+                  defaultValue={["documents", "quizzes", "flashcards"]}
                   className="space-y-2"
                 >
                   {/* Documents Section */}
@@ -1059,6 +1110,88 @@ export default function Subjects() {
                     </AccordionContent>
                   </AccordionItem>
 
+                  <AccordionItem value="flashcards" className="border-none">
+                    <AccordionTrigger className="py-3 px-4 rounded-xl bg-secondary/30 hover:bg-secondary/50 hover:no-underline transition-colors data-[state=open]:rounded-b-none">
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                          <Layers
+                            className="h-3.5 w-3.5 text-primary"
+                            strokeWidth={1.5}
+                          />
+                        </div>
+                        <span className="text-sm font-semibold text-foreground">
+                          Flashcards
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          ({subjectDecks.length})
+                        </span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="pb-0">
+                      <div className="px-4 pb-4 pt-1 bg-secondary/30 rounded-b-xl">
+                        {subjectDecks.length === 0 ? (
+                          <div className="text-center py-5">
+                            <p className="text-sm text-muted-foreground mb-3">
+                              No flashcards for this subject yet.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setCreatingDeck(true)}
+                              className="inline-flex items-center gap-1.5 h-8 px-4 rounded-full bg-primary text-primary-foreground text-xs font-medium hover:scale-[1.02] transition-transform"
+                            >
+                              <Layers className="h-3.5 w-3.5" strokeWidth={2} />{" "}
+                              New deck
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="max-h-[320px] overflow-y-auto overflow-x-hidden rounded-xl">
+                            <div className="space-y-1.5 pr-2">
+                              {subjectDecks.map((deck) => {
+                                const stats = deckStats(deck.id);
+                                return (
+                                  <div
+                                    key={deck.id}
+                                    className="flex items-center gap-3 p-2.5 rounded-xl bg-background/60 hover:bg-secondary/30 transition-colors group/deck"
+                                  >
+                                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                                      <Layers
+                                        className="h-4 w-4 text-primary"
+                                        strokeWidth={1.5}
+                                      />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <Link
+                                        to={`/flashcards/${deck.id}`}
+                                        className="block text-sm font-medium text-foreground truncate hover:text-primary"
+                                        title={deck.title}
+                                      >
+                                        {deck.title}
+                                      </Link>
+                                      <p className="text-[10px] text-muted-foreground">
+                                        {stats.total} card{stats.total === 1 ? "" : "s"}
+                                        {stats.due > 0
+                                          ? ` · ${stats.due} due`
+                                          : stats.total > 0
+                                            ? " · caught up"
+                                            : ""}
+                                      </p>
+                                    </div>
+                                    <Link
+                                      to={`/flashcards/${deck.id}/study`}
+                                      className="h-7 px-3 rounded-full bg-primary/10 text-primary text-[11px] font-medium opacity-0 group-hover/deck:opacity-100 transition-opacity hover:bg-primary/20 shrink-0 inline-flex items-center"
+                                    >
+                                      Study
+                                    </Link>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+
                   <AccordionItem
                     value="document-search"
                     className="border-none"
@@ -1234,7 +1367,7 @@ export default function Subjects() {
                 className="mt-4"
               />
 
-              <div className="flex gap-2 mt-4 mb-2">
+              <div className="flex gap-2 mt-4 mb-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => setQuizTargetDoc(viewDoc)}
@@ -1243,6 +1376,16 @@ export default function Subjects() {
                   <Brain className="h-4 w-4" />
                   Generate Quiz with AI
                 </button>
+                {viewDoc.type === "note" && (
+                  <button
+                    type="button"
+                    onClick={() => setAiFlashcardNote(viewDoc)}
+                    className="inline-flex items-center justify-center gap-1.5 basis-full h-10 rounded-full bg-primary/10 text-primary text-sm font-medium hover:bg-primary/20 transition-colors"
+                  >
+                    <Layers className="h-4 w-4" />
+                    Create flashcards with AI
+                  </button>
+                )}
                 {viewDoc.type !== "link" && (
                   <button
                     type="button"
@@ -1293,6 +1436,28 @@ export default function Subjects() {
         subjectId={quizTargetDoc?.subjectId}
         onQuizCreated={handleQuizCreated}
       />
+
+      <AIFlashcardGenerator
+        key={aiFlashcardNote?.id ?? "ai-flashcards"}
+        open={Boolean(aiFlashcardNote)}
+        note={aiFlashcardNote}
+        onOpenChange={(open) => {
+          if (!open) setAiFlashcardNote(null);
+        }}
+        onCreated={() => {
+          setAiFlashcardNote(null);
+          setViewDoc(null);
+        }}
+      />
+
+      {creatingDeck && selectedSubject && (
+        <DeckFormModal
+          subjects={subjects}
+          defaultSubjectId={selectedSubject.id}
+          onClose={() => setCreatingDeck(false)}
+          onSubmit={handleCreateSubjectDeck}
+        />
+      )}
 
       {/* Edit Doc Modal */}
       <AnimatePresence>

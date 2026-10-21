@@ -7,6 +7,9 @@ const AI_SUMMARY_FALLBACK =
 const AI_QUIZ_FALLBACK =
   "Could not generate quiz with AI. Please try again later.";
 
+const AI_FLASHCARD_FALLBACK =
+  "Could not create flashcards with AI. Please try again later.";
+
 const handleError = (error, fallback) => ({
   success: false,
   message: getApiErrorMessage(error, fallback),
@@ -199,6 +202,43 @@ export const generatePracticeQuiz = async ({
     }
 
     return handleError(error, AI_QUIZ_FALLBACK);
+  }
+};
+
+export const generateDocumentFlashcards = async (
+  documentId,
+  { numberOfCards = 5 } = {},
+) => {
+  try {
+    const response = await api.post(
+      `/ai/documents/${documentId}/generate-flashcards`,
+      { numberOfCards },
+    );
+    return {
+      success: true,
+      data: response.data.data,
+      message: response.data.message,
+    };
+  } catch (error) {
+    console.error("Error generating AI flashcards:", error);
+    const status = error.response?.status;
+
+    if (status === 500) {
+      return {
+        success: false,
+        status,
+        message: AI_FLASHCARD_FALLBACK,
+        error: error.response?.data,
+      };
+    }
+
+    return handleError(
+      error,
+      status === 400
+        ? error.response?.data?.message ||
+            "Could not create flashcards from this note."
+        : AI_FLASHCARD_FALLBACK,
+    );
   }
 };
 
