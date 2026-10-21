@@ -87,7 +87,7 @@ export default function ChatHeader({
       </div>
 
       <div className="flex items-center gap-0.5">
-        <HeaderButton label="Video call" active={view === "call"} onClick={() => toggleView("call")}>
+        <HeaderButton label="Video call" active={view === "call"} onClick={() => onChangeView("call")}>
           <Video className="h-[18px] w-[18px]" />
         </HeaderButton>
         <HeaderButton

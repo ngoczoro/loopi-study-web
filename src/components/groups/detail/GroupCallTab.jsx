@@ -1,14 +1,12 @@
-import { Video } from "lucide-react";
-import TabPlaceholder from "./TabPlaceholder";
+import GroupCallPanel from "@/components/video-call/GroupCallPanel";
 
-// Video call is owned by the video-call feature. Replace this placeholder with
-// `<GroupCallPanel groupId={group.id} />` from `@/components/video-call/GroupCallPanel`.
-export default function GroupCallTab() {
+export default function GroupCallTab({ group, visible = true, onLiveChange, onLeft }) {
   return (
-    <TabPlaceholder
-      icon={Video}
-      title="Group video call"
-      description="Video calls for this group are coming soon."
+    <GroupCallPanel
+      group={group}
+      visible={visible}
+      onLiveChange={onLiveChange}
+      onLeft={onLeft}
     />
   );
 }

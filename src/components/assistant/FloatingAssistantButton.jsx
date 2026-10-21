@@ -5,6 +5,12 @@ export default function FloatingAssistantButton() {
   const location = useLocation();
 
   if (location.pathname.startsWith("/assistant")) return null;
+  if (
+    location.pathname.startsWith("/groups/") &&
+    new URLSearchParams(location.search).get("view") === "call"
+  ) {
+    return null;
+  }
 
   return (
     <Link
