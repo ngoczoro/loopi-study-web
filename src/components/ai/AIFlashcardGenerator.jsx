@@ -96,7 +96,7 @@ export default function AIFlashcardGenerator({
       description={
         drafts
           ? "Review the cards, then save the ones you want."
-          : "AI reads this note and drafts cards for you to check."
+          : "AI reads this document and drafts cards for you to check."
       }
       onClose={close}
     >

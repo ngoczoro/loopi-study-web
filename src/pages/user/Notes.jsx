@@ -572,7 +572,7 @@ export default function Notes() {
                       Create flashcards
                     </button>
                   )}
-                  {viewDoc.type === "note" && (
+                  {viewDoc.type !== "link" && (
                     <button
                       type="button"
                       onClick={() => setAiFlashcardNote(viewDoc)}

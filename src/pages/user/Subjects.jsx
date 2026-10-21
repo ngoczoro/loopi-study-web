@@ -1376,7 +1376,7 @@ export default function Subjects() {
                   <Brain className="h-4 w-4" />
                   Generate Quiz with AI
                 </button>
-                {viewDoc.type === "note" && (
+                {viewDoc.type !== "link" && (
                   <button
                     type="button"
                     onClick={() => setAiFlashcardNote(viewDoc)}
