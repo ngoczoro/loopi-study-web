@@ -299,14 +299,20 @@ Xóa thành viên thì các task đang giao cho người đó chuyển về `ass
 - Xóa task thì các task đang phụ thuộc nó chuyển về `dependsOnTaskId: null`.
 - Remind: task phải có assignee và chưa `done`; mỗi task chỉ nhắc 1 lần / 24h, gọi sớm hơn → 429. Server tạo notification `group_task_reminder` cho assignee.
 
-### Job nhắc tiến độ (BE — node-cron)
+### Thông báo tự động cho người được giao task
 
-- Chạy mỗi ngày một lần theo timezone cấu hình của server; khuyến nghị `0 8 * * *` với `TZ=Asia/Ho_Chi_Minh`.
-- Job phải idempotent: lưu khóa duy nhất theo `(notificationType, taskId, recipientId, calendarDate)` để chạy lại không tạo thông báo trùng.
-- `group_task_due_soon`: task chưa `done`, có assignee, còn `0 < dueAt - now <= 24h`; gửi assignee một lần cho mỗi hạn.
-- `group_task_overdue`: task chưa `done`, có assignee và `dueAt <= now`; gửi assignee và owner một lần/ngày cho tới khi task hoàn thành.
-- `group_task_blocked`: khi một task lần đầu chuyển `effectiveStatus` sang `blocked` vì task tiền đề quá hạn; gửi assignee của task bị chặn. Không gửi lại mỗi ngày nếu quan hệ chặn không đổi.
+- Khi tạo task có `assigneeId`, hoặc đổi `assigneeId` sang người khác: server gửi ngay `group_task_assigned` cho assignee mới (không gửi nếu tự giao cho chính mình hoặc task đã `done`).
+- Thành viên rời nhóm / bị xóa khỏi nhóm: các task của họ trong nhóm về `assignee: null`.
+
+### Job nhắc tiến độ (BE — node-cron, `src/modules/groups/tasks.scheduler.js`)
+
+- Chạy **mỗi giờ** (`5 * * * *`, timezone `GROUP_TASK_ALERT_TIMEZONE`, mặc định `Asia/Ho_Chi_Minh`) và chạy một lượt ngay khi server khởi động. Tắt bằng `GROUP_TASK_ALERTS_ENABLED=false`.
+- Idempotent: bảng `group_task_notification_log` có khóa duy nhất `(type, task_id, recipient_id, dedupe_key)`; chạy lại không tạo thông báo trùng.
+- `group_task_due_soon`: task chưa `done`, có assignee; nhắc ở 2 mốc **còn ≤ 12h** và **còn ≤ 2h**, mỗi mốc một lần cho mỗi hạn (`dedupe_key = due:<dueAt>:12h|2h`, đổi hạn thì được nhắc lại). Mốc đã qua lúc task được tạo thì bỏ qua (task tạo khi còn 5h chỉ nhận mốc 2h).
+- `group_task_overdue`: task chưa `done`, có assignee và `dueAt <= now`; gửi assignee và owner một lần/ngày (`day:<YYYY-MM-DD>`) cho tới khi task hoàn thành. Chỉ gửi từ 08:00 giờ địa phương để không nhắc lúc nửa đêm.
+- `group_task_blocked`: khi task chuyển `effectiveStatus` sang `blocked` vì task tiền đề quá hạn; gửi assignee của task bị chặn. Khóa theo task tiền đề + hạn của nó (`blocker:<id>:<dueAt>`) nên không gửi lại mỗi giờ nếu quan hệ chặn không đổi.
 - Khi task tiền đề hoàn thành, task phụ thuộc tự hết `blocked`; không cần job ghi lại status.
+- Cài đặt người dùng: `due_soon` tuân theo `notifications.taskReminders`; `overdue`/`blocked` tuân theo `notifications.deadlineAlerts`. `assigned` và `reminder` là hành động trực tiếp của người khác nên luôn gửi.
 
 ### Progress
 
@@ -368,9 +374,12 @@ Dùng module notifications có sẵn, thêm các `type`:
 
 | type | Khi nào | Người nhận |
 |---|---|---|
-| `group_task_due_soon` | Task chưa xong, còn ≤ 24h tới hạn | assignee |
+| `group_task_assigned` | Được giao task (tạo mới hoặc đổi người) | assignee |
+| `group_task_due_soon` | Task chưa xong, còn ≤ 12h và còn ≤ 2h tới hạn | assignee |
 | `group_task_overdue` | Task quá hạn chưa xong | assignee + owner |
 | `group_task_blocked` | Task bị chặn vì task phụ thuộc quá hạn | assignee |
 | `group_task_reminder` | Owner bấm "Nhắc thành viên" | assignee |
 
-Payload notification cần có `groupId` và `taskId` để FE điều hướng tới đúng task.
+`metadata` của notification có `{ groupId, groupName, taskId }`; FE bấm vào sẽ mở `/groups/:groupId?view=tasks`.
+
+Realtime: mỗi notification mới được đẩy qua socket event `notification:new` (payload = Notification) vào room `user:{userId}`. `useRealtimeConnection()` nghe event này để làm mới chuông, hiện toast và làm mới tasks/progress của nhóm liên quan.

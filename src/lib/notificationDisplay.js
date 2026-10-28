@@ -1,4 +1,15 @@
-import { Bell, Bot, Clock, ShieldAlert, Target } from "lucide-react";
+import {
+  AlarmClock,
+  Ban,
+  Bell,
+  BellRing,
+  Bot,
+  CalendarClock,
+  ClipboardList,
+  Clock,
+  ShieldAlert,
+  Target,
+} from "lucide-react";
 
 const TYPE_ICONS = {
   reminder: Clock,
@@ -7,10 +18,27 @@ const TYPE_ICONS = {
   streak: Bell,
   session: Clock,
   moderation: ShieldAlert,
+  group_task_assigned: ClipboardList,
+  group_task_reminder: BellRing,
+  group_task_due_soon: CalendarClock,
+  group_task_overdue: AlarmClock,
+  group_task_blocked: Ban,
 };
 
 export function getNotificationIcon(type) {
   return TYPE_ICONS[type] ?? Bell;
+}
+
+export const isGroupTaskNotification = (notification) =>
+  typeof notification?.type === "string" && notification.type.startsWith("group_task_");
+
+/** Where clicking a notification should take the user, or null to stay on the list. */
+export function getNotificationLink(notification) {
+  const groupId = notification?.metadata?.groupId;
+  if (isGroupTaskNotification(notification) && groupId) {
+    return `/groups/${groupId}?view=tasks`;
+  }
+  return null;
 }
 
 export function formatNotificationTime(createdAt) {

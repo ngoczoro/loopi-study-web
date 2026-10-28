@@ -115,3 +115,13 @@ export const previewFile = (item) => {
   useFilePreviewStore.getState().openPreview(item);
   return true;
 };
+
+/**
+ * For files that are not the viewer's own content items (e.g. group chat attachments):
+ * the server-side doc/excel/text previews are owner-only, so only PDFs open in the viewer.
+ */
+export const openSharedFile = ({ id, url, name, mimeType }) => {
+  const item = { id, fileUrl: url, fileName: name, mimeType };
+  if (resolveFileExtension(item) === "pdf") return previewFile(item);
+  return downloadFile(item);
+};

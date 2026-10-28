@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Download, X } from "lucide-react";
+import { downloadFile } from "@/utils/file-preview";
 
 export default function ImageLightbox({ image, onClose }) {
   useEffect(() => {
@@ -24,14 +25,14 @@ export default function ImageLightbox({ image, onClose }) {
       <div className="flex items-center justify-between gap-3 px-4 py-3 text-white">
         <p className="text-sm truncate">{image.name}</p>
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <a
-            href={image.url}
-            download={image.name}
+          <button
+            type="button"
+            onClick={() => downloadFile({ fileUrl: image.url, fileName: image.name })}
             aria-label="Download image"
             className="p-2 rounded-full hover:bg-white/10"
           >
             <Download className="h-5 w-5" />
-          </a>
+          </button>
           <button
             type="button"
             onClick={onClose}

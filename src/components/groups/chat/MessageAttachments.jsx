@@ -1,6 +1,7 @@
 import { Download, Link2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getHostname } from "@/lib/chatLinks";
+import { downloadFile, openSharedFile } from "@/utils/file-preview";
 import {
   formatFileSize,
   getFileBadgeColor,
@@ -51,18 +52,28 @@ export function ImageGrid({ images, onOpenImage }) {
 
 export function FileCard({ file }) {
   return (
-    <a
-      href={file.url}
-      download={file.name}
-      className="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2 w-[260px] max-w-full hover:bg-secondary/60 transition-colors"
-    >
-      <FileBadge name={file.name} />
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground truncate">{file.name}</p>
-        <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
-      </div>
-      <Download className="h-4 w-4 text-muted-foreground shrink-0" />
-    </a>
+    <div className="flex items-center gap-1 rounded-xl border border-border bg-card pl-3 pr-1 py-2 w-[260px] max-w-full">
+      <button
+        type="button"
+        onClick={() => openSharedFile(file)}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left rounded-lg hover:opacity-80 transition-opacity"
+      >
+        <FileBadge name={file.name} />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-foreground truncate">{file.name}</p>
+          <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+        </div>
+      </button>
+      <button
+        type="button"
+        onClick={() => downloadFile({ fileUrl: file.url, fileName: file.name })}
+        aria-label={`Download ${file.name}`}
+        title="Download"
+        className="p-2 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground shrink-0"
+      >
+        <Download className="h-4 w-4" />
+      </button>
+    </div>
   );
 }
 

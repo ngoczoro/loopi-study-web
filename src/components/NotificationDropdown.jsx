@@ -9,6 +9,7 @@ import {
 import {
   formatNotificationTime,
   getNotificationIcon,
+  getNotificationLink,
 } from "@/lib/notificationDisplay";
 
 const DROPDOWN_PREVIEW_LIMIT = 5;
@@ -42,7 +43,7 @@ export function NotificationDropdown() {
         /* list still navigates */
       }
     }
-    navigate("/notifications");
+    navigate(getNotificationLink(notification) ?? "/notifications");
   };
 
   return (

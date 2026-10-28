@@ -1,14 +1,17 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Bell, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   useDeleteAllNotifications,
   useDeleteNotification,
+  useMarkAsRead,
   useNotifications,
 } from "@/hooks/queries/notifications";
 import {
   formatNotificationTime,
   getNotificationIcon,
+  getNotificationLink,
 } from "@/lib/notificationDisplay";
 import { Button } from "@/components/button";
 import {
@@ -28,6 +31,15 @@ export default function Notifications() {
   const deleteNotification = useDeleteNotification();
   const deleteAllNotifications = useDeleteAllNotifications();
   const [deletingId, setDeletingId] = useState(null);
+  const markAsRead = useMarkAsRead();
+  const navigate = useNavigate();
+
+  const openNotification = (notification) => {
+    const link = getNotificationLink(notification);
+    if (!link) return;
+    if (!notification.isRead) markAsRead.mutate(notification.id);
+    navigate(link);
+  };
 
   const handleDelete = async (e, id) => {
     e.stopPropagation();
@@ -137,13 +149,24 @@ export default function Notifications() {
             const Icon = getNotificationIcon(n.type);
             const unread = !n.isRead;
             const isDeleting = deletingId === n.id;
+            const linked = Boolean(getNotificationLink(n));
 
             return (
               <div
                 key={n.id}
+                role={linked ? "link" : undefined}
+                tabIndex={linked ? 0 : undefined}
+                onClick={linked ? () => openNotification(n) : undefined}
+                onKeyDown={
+                  linked
+                    ? (e) => {
+                        if (e.key === "Enter") openNotification(n);
+                      }
+                    : undefined
+                }
                 className={`group relative flex items-start gap-4 p-4 rounded-xl transition-colors ${
                   unread ? "bg-primary/5 shadow-soft" : "bg-card shadow-soft"
-                }`}
+                } ${linked ? "cursor-pointer hover:bg-secondary/40" : ""}`}
               >
                 <div
                   className={`h-9 w-9 rounded-xl flex items-center justify-center shrink-0 ${

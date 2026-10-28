@@ -1,6 +1,7 @@
 import { Link2 } from "lucide-react";
 import { FileBadge } from "../chat/MessageAttachments";
 import { formatFileSize, formatSharedDate } from "../chat/chatFormat";
+import { openSharedFile } from "@/utils/file-preview";
 
 export function MediaGrid({ items, onOpenImage, columns = 3 }) {
   return (
@@ -24,10 +25,10 @@ export function MediaGrid({ items, onOpenImage, columns = 3 }) {
 
 export function FileRow({ item }) {
   return (
-    <a
-      href={item.url}
-      download={item.name}
-      className="flex items-center gap-3 px-4 py-2 hover:bg-secondary/40 transition-colors"
+    <button
+      type="button"
+      onClick={() => openSharedFile(item)}
+      className="w-full flex items-center gap-3 px-4 py-2 text-left hover:bg-secondary/40 transition-colors"
     >
       <FileBadge name={item.name} />
       <div className="min-w-0 flex-1">
@@ -37,7 +38,7 @@ export function FileRow({ item }) {
           <span>{formatSharedDate(item.createdAt)}</span>
         </p>
       </div>
-    </a>
+    </button>
   );
 }
 

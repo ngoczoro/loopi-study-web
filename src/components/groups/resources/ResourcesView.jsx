@@ -23,6 +23,14 @@ import { FileBadge } from "../chat/MessageAttachments";
 import { formatFileSize, formatSharedDate } from "../chat/chatFormat";
 import AddResourceModal from "./AddResourceModal";
 import NoteViewerModal from "./NoteViewerModal";
+import { downloadFile, openSharedFile } from "@/utils/file-preview";
+
+const toSharedFile = (resource) => ({
+  id: resource.id,
+  url: resource.ref.fileUrl,
+  name: resource.ref.fileName ?? resource.title,
+  mimeType: resource.ref.mimeType,
+});
 
 const FILTERS = [
   { id: "all", label: "All" },
@@ -109,8 +117,11 @@ export default function ResourcesView({ group }) {
       setViewingImage({ url: resource.ref.fileUrl, name: resource.ref.fileName ?? resource.title });
       return;
     }
-    const href = resource.type === "link" ? resource.url : resource.ref?.fileUrl;
-    if (href) window.open(href, "_blank", "noopener,noreferrer");
+    if (resource.type === "file" && resource.ref?.fileUrl) {
+      openSharedFile(toSharedFile(resource));
+      return;
+    }
+    if (resource.type === "link") window.open(resource.url, "_blank", "noopener,noreferrer");
   };
 
   const confirmDelete = async () => {
@@ -267,15 +278,18 @@ export default function ResourcesView({ group }) {
                       </a>
                     )}
                     {downloadable && (
-                      <a
-                        href={resource.ref.fileUrl}
-                        download={resource.ref.fileName ?? resource.title}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const file = toSharedFile(resource);
+                          downloadFile({ fileUrl: file.url, fileName: file.name });
+                        }}
                         aria-label={`Download ${resource.title}`}
                         title="Download"
                         className={actionButtonClassName}
                       >
                         <Download className="h-4 w-4" />
-                      </a>
+                      </button>
                     )}
                     {canDelete && (
                       <button
