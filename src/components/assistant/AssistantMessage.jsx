@@ -60,7 +60,11 @@ function AssistantAnswer({ message }) {
   const [sourcesOpen, setSourcesOpen] = useState(true);
   const [copied, setCopied] = useState(false);
   const citations = message.citations ?? [];
-  const notFound = message.answerStatus !== "answered";
+  // Only the dedicated statuses use the empty-state chrome. Missing status + citations
+  // must still render as a normal answer (avoids "not found" text with Sources attached).
+  const notFound =
+    message.answerStatus === "not_found" || message.answerStatus === "no_sources";
+  const visibleCitations = notFound ? [] : citations;
 
   const selectCitation = (index) => {
     setSourcesOpen(true);
@@ -91,13 +95,13 @@ function AssistantAnswer({ message }) {
         ) : (
           <AnswerContent
             content={message.content}
-            citations={citations}
+            citations={visibleCitations}
             activeCitation={activeCitation}
             onCitation={selectCitation}
           />
         )}
 
-        {citations.length > 0 && (
+        {visibleCitations.length > 0 && (
           <div className="space-y-2">
             <button
               type="button"
@@ -106,14 +110,14 @@ function AssistantAnswer({ message }) {
               className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
             >
               <FileSearch className="h-3.5 w-3.5" />
-              Sources ({citations.length})
+              Sources ({visibleCitations.length})
               <ChevronDown
                 className={cn("h-3.5 w-3.5 transition-transform", !sourcesOpen && "-rotate-90")}
               />
             </button>
             {sourcesOpen && (
               <ul className="grid gap-2 sm:grid-cols-2">
-                {citations.map((citation) => (
+                {visibleCitations.map((citation) => (
                   <CitationCard
                     key={citation.index}
                     citation={citation}

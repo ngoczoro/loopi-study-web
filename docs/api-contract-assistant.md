@@ -4,7 +4,7 @@ Người học hỏi đáp **trên tài liệu của chính mình** (note/file �
 
 - Base URL: `/api/v1`. Mọi endpoint yêu cầu Bearer token.
 - Response bọc chuẩn `{ success, data, message }` như các module khác.
-- FE chỉ gọi core backend. Core gọi sang AI Service (`AI_SERVICE_URL`: `POST /rag/index`, `POST /rag/query`); OpenAI key chỉ nằm ở server.
+- FE chỉ gọi **core backend** module `assistant` (không gọi AI Service riêng). Index, tìm kiếm và ghép prompt nằm trong backend; OpenAI key / Ollama chỉ nằm ở server.
 - Mọi truy vấn đều lọc theo `user_id` của người gọi: không bao giờ trả về đoạn tài liệu của người khác.
 - FE chạy được không cần backend khi `VITE_USE_MOCKS=true`.
 
@@ -93,7 +93,7 @@ Người học hỏi đáp **trên tài liệu của chính mình** (note/file �
   - `answered`: có trả lời dựa trên tài liệu, `citations` ≥ 1.
   - `not_found`: không có đoạn nào vượt ngưỡng liên quan; `content` là câu thông báo cố định, `citations: []`.
   - `no_sources`: scope chưa có tài liệu nào index xong; `content` là câu thân thiện kiểu "tài liệu đang được chuẩn bị, thử lại sau ít phút" (không nhắc tới "index").
-- `content` là text thuần có thể chứa: đoạn văn, dòng bắt đầu bằng `- ` (gạch đầu dòng), `**đậm**`, và marker `[n]` trỏ tới `citations[].index`. FE không render HTML từ server.
+- `content` là text thuần có thể có: đoạn văn, dòng bắt đầu bằng `- ` (gạch đầu dòng), `**đậm**`, và marker `[n]` trỏ tới `citations[].index`. FE không render HTML từ server.
 - `location`: vị trí dễ đọc trong tài liệu nếu có (trang PDF, slide, "Đoạn n"); có thể `null`.
 
 ## Endpoint
@@ -122,13 +122,27 @@ Không có endpoint index cho FE; việc index do worker phía server tự xử 
 - Đổi `scope` chỉ ảnh hưởng các câu hỏi sau, không đổi câu trả lời cũ.
 - Server gửi kèm tối đa 6 tin gần nhất làm ngữ cảnh hội thoại, nhưng chỉ trả lời dựa trên các đoạn tài liệu tìm được.
 - Giới hạn: 30 câu hỏi / người / giờ; vượt → 429 với message rõ ràng.
-- AI Service lỗi hoặc timeout (30 s) → 503, không lưu tin `assistant`; tin `user` vẫn được lưu để người dùng gửi lại.
+- LLM lỗi hoặc timeout (**60 s** cho Ollama local, **30 s** cho OpenAI) → 503, không lưu tin `assistant`; tin `user` vẫn được lưu để người dùng gửi lại.
 
-## Luồng RAG (BE / AI Service)
+## Luồng RAG (module `assistant` trong backend)
 
-1. **Index:** trích chữ từ note/file → chia đoạn ~500 token, chồng lấn ~50 → embedding → lưu bảng `document_chunks` (`user_id`, `source_id`, `chunk_index`, `chunk_text`, `location`, `embedding vector`).
-2. **Query:** embedding câu hỏi → tìm top-k (k = 5) bằng cosine trong `document_chunks` với `user_id = caller` và `source_id ∈ scope` → bỏ đoạn có điểm dưới ngưỡng → còn 0 đoạn thì trả `not_found` mà **không gọi** model sinh câu trả lời → ngược lại gọi model với prompt "chỉ dùng các đoạn đã cho, trích [n]".
+1. **Index (P2):** trích chữ từ note/file → chia đoạn ~500 token, chồng lấn ~50 → embedding local (`multilingual-e5-small` trong Node) → lưu `document_chunks` (`user_id`, `content_id`, `chunk_index`, `chunk_text`, `location`, `embedding REAL[]`, `embedding_model`, `search_tsv`).
+2. **Query (P3):** lọc `user_id = caller` + scope → hybrid (cosine cùng `embedding_model` + full-text) → top-k = 5 → dưới ngưỡng thì `not_found` **không gọi** model → ngược lại sinh câu trả lời theo 3 tầng:
+   1. Ollama (`OLLAMA_URL`, `OLLAMA_MODEL`, mặc định `qwen2.5:3b`)
+   2. OpenAI (`OPENAI_API_KEY`) nếu Ollama lỗi / quá thời gian chờ
+   3. Trả trích đoạn kèm `[n]` nếu cả hai không dùng được
 3. Server kiểm tra lại mọi `[n]` trong câu trả lời đều có trong `citations`; marker không hợp lệ thì bị xóa.
+4. Sau này có thể bóc module này thành microservice mà FE vẫn gọi qua backend chính.
+
+## Phase triển khai
+
+| Phase | Nội dung |
+|---|---|
+| P1 | Hội thoại + tin nhắn; hỏi tạm trả `no_sources` |
+| P2 | Index ngầm + embedding local; hỏi bằng trích đoạn (keyword/hybrid) khi đã index |
+| P3 | Sinh câu trả lời: Ollama → OpenAI → trích đoạn; sanitize marker `[n]` |
+| P4 | Đồng bộ sửa/xóa, cách ly user, test, README Ollama |
+| P5 | Đánh giá chất lượng + demo |
 
 ## Định nghĩa hoàn thành
 
