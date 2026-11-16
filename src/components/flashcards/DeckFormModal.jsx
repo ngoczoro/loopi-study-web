@@ -20,11 +20,12 @@ export default function DeckFormModal({
   const [subjectId, setSubjectId] = useState(
     deck?.subjectId ?? defaultSubjectId ?? "",
   );
+  const [kind, setKind] = useState(deck?.kind === "vocabulary" ? "vocabulary" : "general");
 
   const handleSubmit = (event) => {
     event.preventDefault();
     if (!title.trim()) return;
-    onSubmit({ title: title.trim(), subjectId: subjectId || null });
+    onSubmit({ title: title.trim(), subjectId: subjectId || null, kind });
   };
 
   return (
@@ -63,7 +64,21 @@ export default function DeckFormModal({
                 {subject.name}
               </option>
             ))}
+            </select>
+        </label>
+        <label className="block space-y-1.5">
+          <span className="text-sm font-medium text-foreground">Type</span>
+          <select
+            value={kind}
+            onChange={(event) => setKind(event.target.value)}
+            className={fieldClassName}
+          >
+            <option value="general">General</option>
+            <option value="vocabulary">English vocabulary</option>
           </select>
+          <span className="block text-xs text-muted-foreground">
+            Vocabulary decks suggest an English pronunciation and a recording while you type the front of a card.
+          </span>
         </label>
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className={groupSecondaryButtonClassName}>

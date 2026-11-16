@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Volume2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFlashcards } from "@/hooks/useFlashcards";
 import { isDue, scheduleReview } from "@/lib/flashcards/schedule";
+import { isVocabularyDeck } from "@/lib/flashcards/storage";
+import { playAudio, stopAudio } from "@/lib/flashcards/playAudio";
 
 const RATINGS = [
   { id: "again", label: "Again", hint: "Forgot", className: "bg-destructive/10 text-destructive hover:bg-destructive/15" },
@@ -38,9 +40,13 @@ export default function FlashcardStudy() {
 
   const current = deck ? deckCards.find((card) => card.id === remaining[0]) ?? null : null;
   const finished = remaining.length === 0;
+  const vocabulary = isVocabularyDeck(deck);
+
+  useEffect(() => () => stopAudio(), []);
 
   const rate = (rating) => {
     if (!current) return;
+    stopAudio();
     updateCard(current.id, scheduleReview(current, rating));
     setCounts((previous) => ({ ...previous, [rating]: previous[rating] + 1 }));
     setReviewed((value) => value + 1);
@@ -147,36 +153,60 @@ export default function FlashcardStudy() {
         </div>
       ) : (
         <>
-          <button
-            type="button"
-            onClick={() => setFlipped((value) => !value)}
-            className="block w-full text-left [perspective:1200px]"
-            aria-label={flipped ? "Show the front of the card" : "Flip the card"}
-          >
-            <span
-              className={cn(
-                "relative grid h-72 transition-transform duration-500 [transform-style:preserve-3d]",
-                flipped && "[transform:rotateY(180deg)]",
-              )}
+          <div className="relative [perspective:1200px]">
+            <button
+              type="button"
+              onClick={() => setFlipped((value) => !value)}
+              className="block w-full text-left"
+              aria-label={flipped ? "Show the front of the card" : "Flip the card"}
             >
-              <span className="col-start-1 row-start-1 flex items-center justify-center rounded-3xl bg-card p-8 text-center shadow-soft [backface-visibility:hidden]">
-                <span>
-                  <span className="mb-3 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                    Front
+              <span
+                className={cn(
+                  "relative grid transition-transform duration-500 [transform-style:preserve-3d]",
+                  current.imageUrl ? "h-96" : "h-72",
+                  flipped && "[transform:rotateY(180deg)]",
+                )}
+              >
+                <span className="col-start-1 row-start-1 flex items-center justify-center rounded-3xl bg-card p-8 text-center shadow-soft [backface-visibility:hidden]">
+                  <span className="flex w-full flex-col items-center gap-3">
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Front
+                    </span>
+                    {current.imageUrl && (
+                      <img
+                        src={current.imageUrl}
+                        alt=""
+                        className="max-h-32 max-w-full rounded-xl object-contain"
+                      />
+                    )}
+                    <span className="block text-xl font-semibold text-foreground">{current.front}</span>
+                    {vocabulary && current.phonetic && (
+                      <span className="block font-mono text-sm text-muted-foreground">{current.phonetic}</span>
+                    )}
                   </span>
-                  <span className="block text-xl font-semibold text-foreground">{current.front}</span>
+                </span>
+                <span className="col-start-1 row-start-1 flex items-center justify-center rounded-3xl bg-primary/10 p-8 text-center shadow-soft [backface-visibility:hidden] [transform:rotateY(180deg)]">
+                  <span>
+                    <span className="mb-3 block text-[11px] font-medium uppercase tracking-wide text-primary">
+                      Back
+                    </span>
+                    <span className="block text-lg text-foreground">{current.back}</span>
+                  </span>
                 </span>
               </span>
-              <span className="col-start-1 row-start-1 flex items-center justify-center rounded-3xl bg-primary/10 p-8 text-center shadow-soft [backface-visibility:hidden] [transform:rotateY(180deg)]">
-                <span>
-                  <span className="mb-3 block text-[11px] font-medium uppercase tracking-wide text-primary">
-                    Back
-                  </span>
-                  <span className="block text-lg text-foreground">{current.back}</span>
-                </span>
-              </span>
-            </span>
-          </button>
+            </button>
+            {vocabulary && current.audioUrl && !flipped && (
+              <button
+                type="button"
+                onClick={() => playAudio(current.audioUrl)}
+                className="absolute bottom-4 left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-xs font-medium text-foreground shadow-soft hover:bg-secondary/80"
+                aria-label="Play pronunciation"
+              >
+                <Volume2 className="h-3.5 w-3.5" />
+                Listen
+              </button>
+            )}
+          </div>
           <p className="text-center text-xs text-muted-foreground">
             {flipped ? "Press 1–4 to rate" : "Click the card or press space to flip"}
           </p>

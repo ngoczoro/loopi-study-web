@@ -32,8 +32,8 @@ export default function Flashcards() {
     return { total: mine.length, due: mine.filter((card) => isDue(card)).length };
   };
 
-  const handleCreate = ({ title, subjectId }) => {
-    const deck = createDeck({ title, subjectId });
+  const handleCreate = ({ title, subjectId, kind }) => {
+    const deck = createDeck({ title, subjectId, kind });
     toast.success(`Created "${deck.title}"`);
     setCreating(false);
     navigate(`/flashcards/${deck.id}`);
@@ -106,7 +106,10 @@ export default function Flashcards() {
                   <Link to={`/flashcards/${deck.id}`} className="block text-base font-semibold text-foreground hover:text-primary">
                     {deck.title}
                   </Link>
-                  <p className="text-xs text-muted-foreground">{subjectName(deck.subjectId)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {subjectName(deck.subjectId)}
+                    {deck.kind === "vocabulary" ? " · Vocabulary" : ""}
+                  </p>
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs text-muted-foreground">

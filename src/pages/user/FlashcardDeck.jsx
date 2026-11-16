@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Trash2, Volume2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store";
 import { useSubjects } from "@/hooks/useSubjects";
 import { useFlashcards } from "@/hooks/useFlashcards";
 import { dueLabel, isDue } from "@/lib/flashcards/schedule";
+import { isVocabularyDeck } from "@/lib/flashcards/storage";
+import { playAudio } from "@/lib/flashcards/playAudio";
 import CardFormModal from "@/components/flashcards/CardFormModal";
 import DeckFormModal from "@/components/flashcards/DeckFormModal";
 import ImportNoteModal from "@/components/flashcards/ImportNoteModal";
@@ -46,6 +48,7 @@ export default function FlashcardDeck() {
   }
 
   const subjectName = subjects.find((subject) => subject.id === deck.subjectId)?.name;
+  const vocabulary = isVocabularyDeck(deck);
 
   const confirmDelete = () => {
     if (!pendingDelete) return;
@@ -73,10 +76,7 @@ export default function FlashcardDeck() {
           </Link>
           <h1 className="text-2xl font-display font-bold text-foreground truncate">{deck.title}</h1>
           <p className="text-xs text-muted-foreground">
-            {subjectName || "No subject"}
-            {" · "}
-            {deckCards.length} card{deckCards.length === 1 ? "" : "s"}
-            {dueCount > 0 ? ` · ${dueCount} due` : deckCards.length > 0 ? " · caught up" : ""}
+            {`${subjectName || "No subject"}${vocabulary ? " · Vocabulary" : ""} · ${deckCards.length} card${deckCards.length === 1 ? "" : "s"}${dueCount > 0 ? ` · ${dueCount} due` : deckCards.length > 0 ? " · caught up" : ""}`}
           </p>
           {source && (
             <Link
@@ -140,10 +140,26 @@ export default function FlashcardDeck() {
         <ul className="space-y-2">
           {deckCards.map((card) => (
             <li key={card.id} className="bg-card rounded-2xl px-4 py-3 shadow-soft flex items-start gap-3">
+              {card.imageUrl && (
+                <img src={card.imageUrl} alt="" className="h-12 w-12 rounded-lg object-cover bg-secondary shrink-0" />
+              )}
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-foreground">{card.front}</p>
+                {vocabulary && card.phonetic && (
+                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">{card.phonetic}</p>
+                )}
                 <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{card.back}</p>
               </div>
+              {vocabulary && card.audioUrl && (
+                <button
+                  type="button"
+                  onClick={() => playAudio(card.audioUrl)}
+                  aria-label="Play pronunciation"
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary"
+                >
+                  <Volume2 className="h-4 w-4" />
+                </button>
+              )}
               <span className="shrink-0 rounded-full bg-secondary px-2 py-1 text-[11px] font-medium text-muted-foreground">
                 {dueLabel(card)}
               </span>
@@ -184,6 +200,7 @@ export default function FlashcardDeck() {
         <CardFormModal
           key={cardModal.card?.id ?? "new"}
           card={cardModal.card}
+          vocabulary={vocabulary}
           onClose={() => setCardModal(null)}
           onSubmit={(values) => {
             if (cardModal.card) {

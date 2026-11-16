@@ -313,7 +313,7 @@ export default function Subjects() {
     setAiLoading(false);
 
     if (!result.success) {
-      toast.error(result.message || "Could not generate quiz with AI");
+      toast.error(result.message || "Could not generate a quiz from your notes");
       return;
     }
 
@@ -631,10 +631,11 @@ export default function Subjects() {
     };
   };
 
-  const handleCreateSubjectDeck = ({ title, subjectId }) => {
+  const handleCreateSubjectDeck = ({ title, subjectId, kind }) => {
     const deck = createDeck({
       title,
       subjectId: subjectId || selectedSubject?.id || null,
+      kind,
     });
     toast.success(`Created "${deck.title}"`);
     setCreatingDeck(false);
@@ -1168,6 +1169,7 @@ export default function Subjects() {
                                         {deck.title}
                                       </Link>
                                       <p className="text-[10px] text-muted-foreground">
+                                        {deck.kind === "vocabulary" ? "Vocabulary · " : ""}
                                         {stats.total} card{stats.total === 1 ? "" : "s"}
                                         {stats.due > 0
                                           ? ` · ${stats.due} due`
@@ -1374,7 +1376,7 @@ export default function Subjects() {
                   className="inline-flex items-center justify-center gap-1.5 flex-1 h-10 rounded-full bg-primary/10 text-primary text-sm font-medium hover:bg-primary/20 transition-colors"
                 >
                   <Brain className="h-4 w-4" />
-                  Generate Quiz with AI
+                  Generate quiz
                 </button>
                 {viewDoc.type !== "link" && (
                   <button
@@ -1383,7 +1385,7 @@ export default function Subjects() {
                     className="inline-flex items-center justify-center gap-1.5 basis-full h-10 rounded-full bg-primary/10 text-primary text-sm font-medium hover:bg-primary/20 transition-colors"
                   >
                     <Layers className="h-4 w-4" />
-                    Create flashcards with AI
+                    Generate flashcards
                   </button>
                 )}
                 {viewDoc.type !== "link" && (
