@@ -11,6 +11,9 @@ import { unwrapServiceResult } from "@/lib/query/unwrap";
 import { useAuthQueryEnabled } from "@/lib/query/useAuthQueryEnabled";
 import { invalidateSubjects } from "@/lib/query/invalidate";
 
+// Stable reference so hook deps on `subjects` don't change every render.
+const EMPTY_SUBJECTS = [];
+
 export function subjectsQueryOptions() {
   return {
     queryKey: queryKeys.subjects.all,
@@ -27,7 +30,7 @@ export function useSubjectsQuery(options = {}) {
   });
 
   return {
-    subjects: query.data ?? [],
+    subjects: query.data ?? EMPTY_SUBJECTS,
     subjectsLoading: query.isLoading,
     subjectsError: query.error?.message ?? null,
     isFetching: query.isFetching,

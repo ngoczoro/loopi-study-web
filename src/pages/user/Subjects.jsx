@@ -25,6 +25,7 @@ import { format, addDays, startOfDay } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAppStore } from "@/lib/store";
+import { useSubjects, useSubjectMutations } from "@/hooks/useSubjects";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/button";
 import { Calendar as CalendarPicker } from "@/components/calendar";
@@ -96,21 +97,17 @@ const formatExamDate = (examDate) => {
 
 export default function Subjects() {
   const content = useAppStore((state) => state.content);
+  const { subjects, subjectsLoading, subjectsError, fetchSubjects } =
+    useSubjects();
+  const { addSubject, updateSubject, deleteSubject, fetchSubjectById } =
+    useSubjectMutations();
   const {
-    subjects,
     quizzes,
-    subjectsLoading,
-    subjectsError,
     contentLoading,
     contentUploading,
     contentError,
-    fetchSubjects,
-    fetchSubjectById,
     fetchContent,
     fetchContentBySubject,
-    addSubject,
-    updateSubject,
-    deleteSubject,
     createContentNote,
     createContentLink,
     uploadContentFile,
@@ -222,10 +219,9 @@ export default function Subjects() {
 
   useEffect(() => {
     if (!accessToken) return;
-    fetchSubjects();
     fetchContent();
     fetchQuizzes();
-  }, [accessToken, fetchSubjects, fetchContent, fetchQuizzes]);
+  }, [accessToken, fetchContent, fetchQuizzes]);
 
   useEffect(() => {
     if (subjectsError) {

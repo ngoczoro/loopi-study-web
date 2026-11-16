@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useAppStore } from "../lib/store";
+import { useSubjects } from "../hooks/useSubjects";
 import { CheckCircle2, Plus, Trash2, ListChecks, Loader2 } from "lucide-react";
 import { Input } from "./input";
 import { Button } from "./button";
@@ -34,7 +35,7 @@ const priorityColors = {
 export default function TodayTasks() {
   const tasks = useAppStore((s) => s.tasks);
   const tasksLoading = useAppStore((s) => s.tasksLoading);
-  const subjects = useAppStore((s) => s.subjects);
+  const { subjects } = useSubjects();
 
   const createTask = useAppStore((s) => s.createTask);
   const updateTask = useAppStore((s) => s.updateTask);

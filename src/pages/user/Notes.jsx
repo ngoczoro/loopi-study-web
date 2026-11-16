@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAppStore } from "@/lib/store";
+import { useSubjects } from "@/hooks/useSubjects";
 import { useAuthStore } from "@/lib/authStore";
 import { toast } from "sonner";
 import AIDocumentSummary from "@/components/ai/AIDocumentSummary";
@@ -57,14 +58,13 @@ export default function Notes() {
   const navigate = useNavigate();
   const { createDeck, createCards } = useFlashcards();
 
+  const { subjects } = useSubjects();
   const {
     content,
-    subjects,
     contentLoading,
     contentUploading,
     contentError,
     fetchContent,
-    fetchSubjects,
     createContentNote,
     createContentLink,
     uploadContentFile,
@@ -98,9 +98,8 @@ export default function Notes() {
 
   useEffect(() => {
     if (!accessToken) return;
-    fetchSubjects();
     fetchContent();
-  }, [accessToken, fetchSubjects, fetchContent]);
+  }, [accessToken, fetchContent]);
 
   useEffect(() => {
     const contentId = location.state?.contentId;

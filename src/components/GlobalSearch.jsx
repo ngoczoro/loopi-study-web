@@ -10,6 +10,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
+import { useSubjects } from "@/hooks/useSubjects";
 import { cn } from "@/lib/utils";
 
 const GROUP_ORDER = ["subjects", "documents", "quizzes", "notes"];
@@ -78,10 +79,9 @@ export function GlobalSearch() {
 
   const navigate = useNavigate();
 
-  const subjects = useAppStore((s) => s.subjects ?? []);
+  const { subjects } = useSubjects();
   const content = useAppStore((s) => s.content ?? []);
   const quizzes = useAppStore((s) => s.quizzes ?? []);
-  const fetchSubjects = useAppStore((s) => s.fetchSubjects);
   const fetchContent = useAppStore((s) => s.fetchContent);
   const fetchQuizzes = useAppStore((s) => s.fetchQuizzes);
 
@@ -89,10 +89,9 @@ export function GlobalSearch() {
   const showDropdown = open && trimmedQuery.length >= MIN_QUERY_LENGTH;
 
   useEffect(() => {
-    fetchSubjects?.();
     fetchContent?.();
     fetchQuizzes?.();
-  }, [fetchSubjects, fetchContent, fetchQuizzes]);
+  }, [fetchContent, fetchQuizzes]);
 
   const performSearch = useCallback(
     (q) => {

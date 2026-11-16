@@ -15,6 +15,7 @@ import TodayTasks from "../../components/TodayTasks";
 import loopyHappy from "../../assets/loopy-happy.png";
 import { Link } from "react-router-dom";
 import { useAppStore } from "../../lib/store";
+import { useSubjects } from "@/hooks/useSubjects";
 import { useAuthStore } from "../../lib/authStore";
 import { formatFocusHours } from "@/services/focusAnalyticsService";
 import { useProgressSummary } from "@/hooks/queries/progress";
@@ -38,13 +39,12 @@ export default function Dashboard() {
   const accessToken = useAuthStore((s) => s.accessToken);
 
   const tasks = useAppStore((s) => s.tasks);
-  const subjects = useAppStore((s) => s.subjects);
+  const { subjects } = useSubjects();
   const taskSummary = useAppStore((s) => s.taskSummary);
   const taskSummaryLoading = useAppStore((s) => s.taskSummaryLoading);
 
   const fetchTaskSummary = useAppStore((s) => s.fetchTaskSummary);
   const fetchTasks = useAppStore((s) => s.fetchTasks);
-  const fetchSubjects = useAppStore((s) => s.fetchSubjects);
   const quizzes = useAppStore((s) => s.quizzes);
   const quizzesLoading = useAppStore((s) => s.quizzesLoading);
   const quizzesError = useAppStore((s) => s.quizzesError);
@@ -83,10 +83,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!accessToken) return;
-    fetchSubjects();
     fetchTaskSummary();
     fetchTasks({ dueDate: today, limit: 50 });
-  }, [accessToken, fetchSubjects, fetchTaskSummary, fetchTasks, today]);
+  }, [accessToken, fetchTaskSummary, fetchTasks, today]);
 
   useEffect(() => {
     if (!accessToken) return undefined;

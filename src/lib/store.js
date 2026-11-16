@@ -1,12 +1,5 @@
 import { create } from "zustand";
 import {
-  getSubjects,
-  getSubjectById,
-  createSubject as createSubjectAPI,
-  updateSubject as updateSubjectAPI,
-  deleteSubject as deleteSubjectAPI,
-} from "../services/subjectService";
-import {
   getContent,
   getContentBySubject,
   createNote as createNoteAPI,
@@ -20,8 +13,6 @@ import {
   mapContentListForUI,
 } from "./content-utils";
 import { getApiErrorMessage } from "./apiErrorUtils.js";
-import { queryClient } from "./query/queryClient";
-import { invalidateSubjects } from "./query/invalidate";
 import {
   getTasks,
   getTaskSummary,
@@ -37,26 +28,9 @@ import {
   updateQuiz as updateQuizAPI,
 } from "../services/quizService";
 
-/**
- * @typedef {Object} Subject
- * @property {string} id
- * @property {string} name
- * @property {number|null} credits
- * @property {"Easy"|"Medium"|"Hard"|null} difficulty
- * @property {string|null} examDate
- * @property {string|null} color
- * @property {number} progress
- * @property {"low"|"medium"|"high"|null} priority
- * @property {number|null} requiredHoursPerWeek
- */
-
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 export const useAppStore = create((set, get) => ({
-  subjects: [],
-  subjectsLoading: false,
-  subjectsError: null,
-
   content: [],
   contentLoading: false,
   contentUploading: false,
@@ -76,81 +50,6 @@ export const useAppStore = create((set, get) => ({
   taskSummaryError: null,
 
   // --- ACTIONS ---
-  // Subjects
-  fetchSubjects: async () => {
-    set({ subjectsLoading: true, subjectsError: null });
-    const result = await getSubjects();
-    if (result.success) {
-      set({ subjects: result.data, subjectsLoading: false, subjectsError: null });
-      return { ok: true, data: result.data };
-    }
-    set({ subjectsLoading: false, subjectsError: result.message });
-    return { ok: false, message: result.message };
-  },
-
-  fetchSubjectById: async (id) => {
-    const result = await getSubjectById(id);
-    if (result.success) {
-      set((state) => ({
-        subjects: state.subjects.some((s) => s.id === id)
-          ? state.subjects.map((s) => (s.id === id ? result.data : s))
-          : [...state.subjects, result.data],
-      }));
-      return { ok: true, data: result.data };
-    }
-    return { ok: false, message: result.message };
-  },
-
-  addSubject: async (payload) => {
-    set({ subjectsLoading: true, subjectsError: null });
-    const result = await createSubjectAPI(payload);
-    if (result.success) {
-      set((state) => ({
-        subjects: [result.data, ...state.subjects],
-        subjectsLoading: false,
-        subjectsError: null,
-      }));
-      invalidateSubjects(queryClient);
-      return { ok: true, data: result.data };
-    }
-    set({ subjectsLoading: false, subjectsError: result.message });
-    return { ok: false, message: result.message };
-  },
-
-  updateSubject: async (id, updates) => {
-    set({ subjectsLoading: true, subjectsError: null });
-    const result = await updateSubjectAPI(id, updates);
-    if (result.success) {
-      set((state) => ({
-        subjects: state.subjects.map((s) =>
-          s.id === id ? result.data : s,
-        ),
-        subjectsLoading: false,
-        subjectsError: null,
-      }));
-      invalidateSubjects(queryClient);
-      return { ok: true, data: result.data };
-    }
-    set({ subjectsLoading: false, subjectsError: result.message });
-    return { ok: false, message: result.message };
-  },
-
-  deleteSubject: async (id) => {
-    set({ subjectsLoading: true, subjectsError: null });
-    const result = await deleteSubjectAPI(id);
-    if (result.success) {
-      set((state) => ({
-        subjects: state.subjects.filter((s) => s.id !== id),
-        subjectsLoading: false,
-        subjectsError: null,
-      }));
-      invalidateSubjects(queryClient);
-      return { ok: true };
-    }
-    set({ subjectsLoading: false, subjectsError: result.message });
-    return { ok: false, message: result.message };
-  },
-
   // Content
   upsertContentInState: (item) => {
     if (!item?.id) return;
