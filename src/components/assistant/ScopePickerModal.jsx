@@ -124,7 +124,7 @@ function ScopeForm({ scope, sources, onCancel, onApply }) {
                   : "border-border text-muted-foreground hover:text-foreground",
               )}
             >
-              {subject.name}
+              {subject.name || "Untitled subject"}
             </button>
           ))}
         </div>

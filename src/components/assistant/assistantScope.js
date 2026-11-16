@@ -11,7 +11,9 @@ export function listSubjects(sources) {
       subjects.set(source.subject.id, source.subject);
     }
   });
-  return [...subjects.values()].sort((a, b) => a.name.localeCompare(b.name));
+  return [...subjects.values()].sort((a, b) =>
+    String(a.name ?? "").localeCompare(String(b.name ?? "")),
+  );
 }
 
 export function sourcesInScope(scope, sources) {
