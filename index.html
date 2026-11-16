@@ -5,6 +5,18 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>loopi-study-web</title>
+    <script>
+      // Apply the saved dark mode and color theme before first paint (see src/lib/theme.js).
+      try {
+        if (localStorage.getItem("loopi_theme") === "dark") {
+          document.documentElement.classList.add("dark");
+        }
+        var colorTheme = localStorage.getItem("loopi_color_theme");
+        if (colorTheme && colorTheme !== "pink") {
+          document.documentElement.dataset.theme = colorTheme;
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

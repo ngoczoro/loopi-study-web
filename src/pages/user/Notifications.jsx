@@ -180,7 +180,7 @@ export default function Notifications() {
                     strokeWidth={1.5}
                   />
                 </div>
-                <div className="flex-1 min-w-0 pr-8">
+                <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground">{n.title}</p>
                   {n.body && (
                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -188,23 +188,26 @@ export default function Notifications() {
                     </p>
                   )}
                 </div>
-                <span className="text-[10px] text-muted-foreground shrink-0 pt-0.5">
-                  {formatNotificationTime(n.createdAt)}
-                </span>
 
-                <button
-                  type="button"
-                  onClick={(e) => handleDelete(e, n.id)}
-                  disabled={isDeleting}
-                  aria-label="Delete notification"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all disabled:opacity-50"
-                >
-                  {isDeleting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-4 w-4" strokeWidth={1.5} />
-                  )}
-                </button>
+                {/* Time above the delete button so the hover-revealed button never covers it. */}
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className="text-[10px] text-muted-foreground pt-0.5 whitespace-nowrap">
+                    {formatNotificationTime(n.createdAt)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => handleDelete(e, n.id)}
+                    disabled={isDeleting}
+                    aria-label="Delete notification"
+                    className="-mr-1.5 h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all disabled:opacity-50"
+                  >
+                    {isDeleting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" strokeWidth={1.5} />
+                    )}
+                  </button>
+                </div>
               </div>
             );
           })}

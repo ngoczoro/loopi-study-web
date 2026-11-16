@@ -1042,7 +1042,8 @@ export default function Planner() {
                   return (
                     <div
                       key={`${hour}-${di}`}
-                      className={`h-16 border-l border-b border-border/30 relative ${blocked ? "bg-rose-950/10 rounded-md" : ""}`}
+                      className={`h-16 border-l border-b border-border/30 relative ${blocked ? "slot-blocked rounded-md" : ""}`}
+                      title={blocked ? "Blocked time" : undefined}
                       onDragOver={handleCellDragOver}
                       onDrop={(e) => handleCellDrop(e, di, hour)}
                     >

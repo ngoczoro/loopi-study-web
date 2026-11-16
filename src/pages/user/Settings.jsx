@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { User, Lock, Bell, Calendar, BookOpen, Timer } from "lucide-react";
+import { User, Lock, Bell, Calendar, BookOpen, Timer, Moon, Check } from "lucide-react";
 import loopyHappy from "@/assets/loopy-happy.png";
 import { useAuthStore } from "@/lib/authStore";
 import {
@@ -14,6 +14,13 @@ import {
   useBlockedSlotsMutation,
 } from "@/hooks/queries/user";
 import { toast } from "sonner";
+import {
+  COLOR_THEMES,
+  getColorTheme,
+  isDarkMode,
+  setColorTheme,
+  setDarkMode,
+} from "@/lib/theme";
 
 const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const hours = Array.from({ length: 24 }, (_, i) => i);
@@ -21,6 +28,18 @@ const hours = Array.from({ length: 24 }, (_, i) => i);
 export default function Settings() {
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
+
+  const [darkMode, setDarkModeState] = useState(isDarkMode);
+  const handleToggleDarkMode = () => {
+    setDarkMode(!darkMode);
+    setDarkModeState(!darkMode);
+  };
+
+  const [colorTheme, setColorThemeState] = useState(getColorTheme);
+  const handleSelectColorTheme = (id) => {
+    setColorTheme(id);
+    setColorThemeState(id);
+  };
 
   const [blockMode, setBlockMode] = useState("block");
   const [loading, setLoading] = useState(true);
@@ -403,6 +422,50 @@ export default function Settings() {
         </div>
       </div>
 
+      {/* Appearance */}
+      <div className="bg-card rounded-2xl p-5 shadow-soft">
+        <h2 className="text-base font-semibold text-foreground mb-4 flex items-center gap-2">
+          <Moon className="h-4 w-4 text-primary" strokeWidth={1.5} /> Appearance
+        </h2>
+        <div className="space-y-4">
+          <ToggleSwitch
+            label="Dark mode"
+            value={darkMode}
+            onChange={handleToggleDarkMode}
+          />
+          <div>
+            <p className="text-sm text-foreground mb-2">Theme color</p>
+            <div className="flex flex-wrap gap-3" role="radiogroup" aria-label="Theme color">
+              {COLOR_THEMES.map((theme) => {
+                const selected = colorTheme === theme.id;
+                return (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => handleSelectColorTheme(theme.id)}
+                    className={`flex items-center gap-2 h-9 pl-1.5 pr-3 rounded-full border text-sm transition-colors ${
+                      selected
+                        ? "border-primary bg-primary/10 text-foreground font-medium"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <span
+                      className="h-6 w-6 rounded-full flex items-center justify-center"
+                      style={{ backgroundColor: theme.swatch }}
+                    >
+                      {selected ? <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} /> : null}
+                    </span>
+                    {theme.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Notifications */}
       <div className="bg-card rounded-2xl p-5 shadow-soft">
         <h2 className="text-base font-semibold text-foreground mb-4 flex items-center gap-2">
@@ -594,6 +657,8 @@ function ToggleSwitch({ label, value = true, onChange }) {
       <span className="text-sm text-foreground">{label}</span>
       <button
         type="button"
+        role="switch"
+        aria-checked={value}
         onClick={() => {
           onChange();
         }}

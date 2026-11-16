@@ -136,7 +136,7 @@ export default function VideoTile({
   return (
     <div
       className={cn(
-        "relative aspect-video overflow-hidden rounded-2xl bg-[hsl(340,24%,14%)]",
+        "relative aspect-video overflow-hidden rounded-2xl bg-[hsl(var(--brand-h),24%,14%)]",
         speaking && "ring-2 ring-emerald-400",
         className,
       )}

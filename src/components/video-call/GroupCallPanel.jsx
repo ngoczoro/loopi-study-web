@@ -92,7 +92,7 @@ function CallControls({ call, onLeave, onTogglePeople, peopleOpen, count }) {
       >
         <span className="relative">
           <Users className="h-5 w-5" />
-          <span className="absolute -right-2 -top-2 min-w-4 rounded-full bg-white px-1 text-[10px] font-semibold leading-4 text-[hsl(340,30%,12%)]">
+          <span className="absolute -right-2 -top-2 min-w-4 rounded-full bg-white px-1 text-[10px] font-semibold leading-4 text-[hsl(var(--brand-h),30%,12%)]">
             {count}
           </span>
         </span>
@@ -115,7 +115,7 @@ function PeoplePanel({ group, call, onClose }) {
   const waiting = members.filter((member) => !inCallIds.has(member.userId));
 
   return (
-    <aside className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-white/10 bg-[hsl(340,28%,10%)] text-white sm:w-[320px]">
+    <aside className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-white/10 bg-[hsl(var(--brand-h),28%,10%)] text-white sm:w-[320px]">
       <div className="flex h-14 shrink-0 items-center justify-between px-4">
         <h3 className="text-sm font-semibold">People</h3>
         <button
@@ -314,7 +314,7 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
           : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3";
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col bg-[hsl(340,30%,8%)] text-white">
+    <div className="relative flex min-h-0 flex-1 flex-col bg-[hsl(var(--brand-h),30%,8%)] text-white">
       <div className="flex h-12 shrink-0 items-center justify-between gap-3 px-4">
         <p className="truncate text-sm font-medium">{group.name}</p>
         <p className="flex shrink-0 items-center gap-2 text-xs text-white/75">
