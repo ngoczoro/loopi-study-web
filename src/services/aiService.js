@@ -5,10 +5,10 @@ const AI_SUMMARY_FALLBACK =
   "AI summary could not be generated. Please try again later.";
 
 const AI_QUIZ_FALLBACK =
-  "Could not generate quiz with AI. Please try again later.";
+  "Could not generate a quiz from your notes. Please try again later.";
 
 const AI_FLASHCARD_FALLBACK =
-  "Could not create flashcards with AI. Please try again later.";
+  "Could not create flashcards from this note. Please try again later.";
 
 const handleError = (error, fallback) => ({
   success: false,

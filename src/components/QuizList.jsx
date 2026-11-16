@@ -55,7 +55,7 @@ export default function QuizList({
           No Quizzes Yet
         </h1>
         <p className="text-sm text-muted-foreground max-w-sm mb-4">
-          Generate your first quiz with AI to start testing your knowledge!
+          Generate a quiz from your notes to start testing your knowledge!
         </p>
 
         {onGenerateWithAi && (
@@ -63,7 +63,7 @@ export default function QuizList({
             onClick={onGenerateWithAi}
             className="inline-flex items-center gap-2 h-10 px-5 rounded-full bg-primary text-primary-foreground font-medium text-sm shadow-soft-md hover:scale-[1.02] transition-transform"
           >
-            <Sparkles className="h-4 w-4" /> Generate Quiz with AI
+            <Sparkles className="h-4 w-4" /> Generate quiz
           </button>
         )}
       </div>
@@ -79,7 +79,7 @@ export default function QuizList({
               My Quizzes
             </h1>
             <p className="text-sm text-muted-foreground">
-              Test your knowledge with AI-generated quizzes
+              Test your knowledge with quizzes from your notes
             </p>
           </div>
 

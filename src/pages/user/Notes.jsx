@@ -560,7 +560,7 @@ export default function Notes() {
                     className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
                   >
                     <Brain className="h-3.5 w-3.5" />
-                    Generate Quiz with AI
+                    Generate quiz
                   </button>
                   {viewDoc.type === "note" && (
                     <button
@@ -579,7 +579,7 @@ export default function Notes() {
                       className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
                     >
                       <Sparkles className="h-3.5 w-3.5" />
-                      Create flashcards with AI
+                      Generate flashcards
                     </button>
                   )}
                   {viewDoc.type !== "link" && (

@@ -52,7 +52,7 @@ export default function AIQuizGenerator({
     setLoading(false);
 
     if (!result.success) {
-      toast.error(result.message || "Could not generate quiz with AI");
+      toast.error(result.message || "Could not generate a quiz from this document");
       return;
     }
 
@@ -62,7 +62,7 @@ export default function AIQuizGenerator({
     });
 
     onQuizCreated?.(quiz);
-    toast.success("AI quiz created successfully");
+    toast.success("Quiz created from your notes");
     onOpenChange(false);
     navigate("/quiz", { state: { activeQuizId: quiz.id } });
   };
@@ -91,7 +91,7 @@ export default function AIQuizGenerator({
           </div>
           <div>
             <h2 className="text-lg font-display font-semibold text-foreground">
-              Generate Quiz with AI
+              Generate quiz
             </h2>
             <p className="text-xs text-muted-foreground truncate max-w-[240px]">
               {documentTitle || "Document"}
@@ -101,12 +101,12 @@ export default function AIQuizGenerator({
 
         {!supported ? (
           <p className="text-sm text-muted-foreground">
-            This document type does not support AI quiz generation yet.
+            This document type cannot be turned into a quiz yet.
           </p>
         ) : (
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground">
-              Each generation creates a new question set from the selected document.
+              Questions are written from this document. Every answer has to come from a fact in your notes.
             </p>
 
             <div className="space-y-2">
@@ -161,7 +161,7 @@ export default function AIQuizGenerator({
               ) : (
                 <>
                   <Brain className="h-4 w-4" />
-                  Generate Quiz with AI
+                  Generate quiz
                 </>
               )}
             </button>

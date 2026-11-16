@@ -38,13 +38,13 @@ export default function AIFlashcardGenerator({
     setLoading(false);
 
     if (!result.success) {
-      toast.error(result.message || "Could not create flashcards with AI");
+      toast.error(result.message || "Could not create flashcards from this note");
       return;
     }
 
     const cards = Array.isArray(result.data?.cards) ? result.data.cards : [];
     if (cards.length === 0) {
-      toast.error("Could not create flashcards with AI. Please try again later.");
+      toast.error("Could not create flashcards from this note. Please try again later.");
       return;
     }
 
@@ -92,11 +92,11 @@ export default function AIFlashcardGenerator({
     <GroupModalShell
       open
       busy={loading}
-      title="Create flashcards with AI"
+      title="Create flashcards"
       description={
         drafts
           ? "Review the cards, then save the ones you want."
-          : "AI reads this document and drafts cards for you to check."
+          : "Drafts cards from this document. You can edit them before saving."
       }
       onClose={close}
     >

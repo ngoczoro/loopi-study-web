@@ -365,7 +365,7 @@ export default function Quiz() {
     setAiLoading(false);
 
     if (!result.success) {
-      toast.error(result.message || "Could not generate quiz with AI");
+      toast.error(result.message || "Could not generate a quiz from your notes");
       return;
     }
 
@@ -448,7 +448,7 @@ export default function Quiz() {
                   </div>
                   <div>
                     <h2 className="text-lg font-display font-semibold text-foreground">
-                      Generate Quiz with AI
+                      Generate quiz
                     </h2>
                     <p className="text-xs text-muted-foreground">
                       Enter a topic and AI will create questions
