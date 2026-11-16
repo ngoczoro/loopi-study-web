@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Brain, Clock, Trash2, Sparkles, Pencil, FileText } from "lucide-react";
+import { Brain, Clock, Trash2, Sparkles, Pencil, FileText, ListChecks } from "lucide-react";
 import { motion } from "framer-motion";
 import loopyThinking from "@/assets/loopy-thinking.png";
 import {
@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
 } from "@/components/alert-dialog";
 import QuizRenameModal from "@/components/QuizRenameModal";
+import QuizEditModal from "@/components/QuizEditModal";
 
 const resolveSubjectLabel = (quiz, subjects = []) => {
   if (quiz.subjectName) {
@@ -37,10 +38,17 @@ export default function QuizList({
   onReviewQuiz,
   onDeleteQuiz,
   onRenameQuiz,
+  onEditQuiz,
   onGenerateWithAi,
 }) {
   const [deleteId, setDeleteId] = useState(null);
   const [renameQuiz, setRenameQuiz] = useState(null);
+  const [editQuiz, setEditQuiz] = useState(null);
+
+  const handleEditSave = async (quizId, payload) => {
+    const result = await onEditQuiz?.(quizId, payload);
+    return result ?? { ok: false };
+  };
 
   const handleRenameSave = async (quizId, title) => {
     const result = await onRenameQuiz?.(quizId, title);
@@ -122,6 +130,19 @@ export default function QuizList({
                   >
                     <Pencil className="h-4 w-4" />
                   </button>
+                  {onEditQuiz ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditQuiz(q);
+                      }}
+                      className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10"
+                      title="Edit questions"
+                    >
+                      <ListChecks className="h-4 w-4" />
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={(e) => {
@@ -217,6 +238,18 @@ export default function QuizList({
         }}
         onSave={handleRenameSave}
       />
+
+      {editQuiz ? (
+        <QuizEditModal
+          key={editQuiz.id}
+          quiz={editQuiz}
+          hasAttempts={Boolean(lastAttempts?.[editQuiz.id])}
+          onOpenChange={(open) => {
+            if (!open) setEditQuiz(null);
+          }}
+          onSave={handleEditSave}
+        />
+      ) : null}
 
       <AlertDialog
         open={!!deleteId}

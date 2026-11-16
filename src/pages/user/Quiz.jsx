@@ -12,6 +12,7 @@ import {
 } from "@/services/aiService";
 import { useLocation, useNavigate } from "react-router-dom";
 import QuizList from "@/components/QuizList";
+import AiQuizPreview from "@/components/ai/AiQuizPreview";
 import QuizReviewSummary from "@/components/QuizReviewSummary";
 import QuizWeakTopicsCard from "@/components/QuizWeakTopicsCard";
 import QuizReviewQuestionCard from "@/components/QuizReviewQuestionCard";
@@ -24,6 +25,7 @@ import {
   submitQuizAttempt,
   getLatestQuizAttempt,
   getQuizAttempts,
+  saveQuizContent,
 } from "@/services/quizService";
 import { reportViolation } from "@/services/violationService";
 
@@ -316,6 +318,18 @@ export default function Quiz() {
     return result;
   };
 
+  const handleEditQuiz = async (quizId, payload) => {
+    const result = await saveQuizContent(quizId, payload);
+    if (!result.success) {
+      toast.error(result.message || "Failed to save quiz");
+      return { ok: false };
+    }
+
+    upsertQuiz(result.data);
+    toast.success("Quiz updated");
+    return { ok: true };
+  };
+
   const handleBack = () => {
     setActiveQuiz(null);
     setAnswers({});
@@ -348,6 +362,9 @@ export default function Quiz() {
 
     setAiLoading(true);
 
+    // The backend saves every generated quiz; drop the unsaved preview being replaced.
+    if (aiPreview) await deleteQuiz(aiPreview.id);
+
     const options = {
       topic: aiTopic.trim(),
       difficulty: aiDifficulty,
@@ -372,19 +389,27 @@ export default function Quiz() {
     const quiz = mapGeneratedQuizForStore(result.data, {
       subjectId: aiSubjectId || null,
     });
-    upsertQuiz(quiz);
     setAiPreview(quiz);
   };
 
-  const handleConfirmQuiz = () => {
-    if (!aiPreview) return;
+  // Closing without "Save Quiz" discards the generated preview.
+  const closeAiModal = () => {
+    if (aiLoading) return;
+    if (aiPreview) void deleteQuiz(aiPreview.id);
+    setShowAiModal(false);
+    setAiPreview(null);
+  };
 
+  const handleConfirmQuiz = (savedQuiz) => {
+    if (!savedQuiz) return;
+
+    upsertQuiz(savedQuiz);
     toast.success("Quiz saved! 🎉");
     setShowAiModal(false);
     setAiPreview(null);
     setAiTopic("");
     setAiSubjectId("");
-    setActiveQuiz(aiPreview.id);
+    setActiveQuiz(savedQuiz.id);
   };
 
   if (!quiz) {
@@ -413,6 +438,7 @@ export default function Quiz() {
             onReviewQuiz={handleReviewLast}
             onDeleteQuiz={handleDeleteQuiz}
             onRenameQuiz={handleRenameQuiz}
+            onEditQuiz={handleEditQuiz}
             onGenerateWithAi={() => setShowAiModal(true)}
           />
         )}
@@ -422,10 +448,7 @@ export default function Quiz() {
             <div className="fixed inset-0 z-50 flex items-center justify-center">
               <div
                 className="absolute inset-0 bg-foreground/20 backdrop-blur-sm"
-                onClick={() => {
-                  setShowAiModal(false);
-                  setAiPreview(null);
-                }}
+                onClick={closeAiModal}
               />
               <motion.div
                 initial={{ scale: 0.95, opacity: 0 }}
@@ -434,11 +457,9 @@ export default function Quiz() {
                 className="relative bg-card rounded-2xl p-6 shadow-soft-lg w-full max-w-lg z-10 max-h-[85vh] overflow-auto"
               >
                 <button
-                  onClick={() => {
-                    setShowAiModal(false);
-                    setAiPreview(null);
-                  }}
-                  className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
+                  onClick={closeAiModal}
+                  disabled={aiLoading}
+                  className="absolute top-4 right-4 text-muted-foreground hover:text-foreground disabled:opacity-50"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -518,49 +539,13 @@ export default function Quiz() {
                     </button>
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      {aiPreview.title}
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      {aiPreview.questions.length} questions generated
-                    </p>
-                    <div className="space-y-2 max-h-60 overflow-auto">
-                      {aiPreview.questions.map((q, i) => (
-                        <div key={i} className="bg-secondary/40 rounded-xl p-3">
-                          <p className="text-xs font-medium text-foreground mb-1">
-                            Q{i + 1}. {q.question}
-                          </p>
-                          <div className="space-y-0.5">
-                            {q.options.map((o, j) => (
-                              <p
-                                key={j}
-                                className={`text-xs ${j === q.correctIndex ? "text-primary font-medium" : "text-muted-foreground"}`}
-                              >
-                                {String.fromCharCode(65 + j)}) {o}{" "}
-                                {j === q.correctIndex && "✓"}
-                              </p>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleAiGenerate(true)}
-                        disabled={aiLoading}
-                        className="flex-1 h-10 rounded-full bg-secondary text-secondary-foreground font-medium text-sm hover:bg-secondary/80 disabled:opacity-50"
-                      >
-                        Regenerate
-                      </button>
-                      <button
-                        onClick={handleConfirmQuiz}
-                        className="flex-1 h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform"
-                      >
-                        ✅ Save Quiz
-                      </button>
-                    </div>
-                  </div>
+                  <AiQuizPreview
+                    key={aiPreview.id}
+                    quiz={aiPreview}
+                    regenerating={aiLoading}
+                    onRegenerate={() => handleAiGenerate(true)}
+                    onSaved={handleConfirmQuiz}
+                  />
                 )}
               </motion.div>
             </div>
@@ -655,7 +640,11 @@ export default function Quiz() {
                 >
                   <QuizReviewQuestionCard
                     answerDetail={answerDetail}
-                    options={quiz.questions[answerDetail.questionIndex]?.options ?? []}
+                    options={
+                      answerDetail.options ??
+                      quiz.questions[answerDetail.questionIndex]?.options ??
+                      []
+                    }
                   />
                 </div>
               ))

@@ -9,6 +9,13 @@ import {
   isAiQuizSupported,
   mapGeneratedQuizForStore,
 } from "@/services/aiService";
+import { deleteQuiz, saveQuizContent } from "@/services/quizService";
+import QuizReviewEditor from "./QuizReviewEditor";
+import {
+  toDraftQuestion,
+  toQuizContentPayload,
+  validateQuizDraft,
+} from "@/lib/quizDraft";
 
 const DIFFICULTY_OPTIONS = [
   { value: "mixed", label: "Mixed difficulty" },
@@ -32,12 +39,69 @@ export default function AIQuizGenerator({
   const [difficulty, setDifficulty] = useState("mixed");
   const [numberOfQuestions, setNumberOfQuestions] = useState(5);
   const [loading, setLoading] = useState(false);
+  // Set after generation: the quiz is already saved, the user reviews and edits it here.
+  const [generated, setGenerated] = useState(null);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftQuestions, setDraftQuestions] = useState([]);
 
   const supported = isAiQuizSupported(document ?? { id: documentId });
+  const reviewing = Boolean(generated);
 
+  const finish = () => {
+    setGenerated(null);
+    setDraftTitle("");
+    setDraftQuestions([]);
+    onOpenChange(false);
+  };
+
+  // Closing during review keeps the quiz as generated.
   const handleClose = () => {
     if (loading) return;
-    onOpenChange(false);
+    if (generated) {
+      onQuizCreated?.(generated);
+      toast.success("Quiz kept as generated");
+    }
+    finish();
+  };
+
+  const handleDiscard = async () => {
+    if (!generated || loading) return;
+    setLoading(true);
+    const result = await deleteQuiz(generated.id);
+    setLoading(false);
+    if (!result.success) {
+      toast.error(result.message || "Could not discard this quiz");
+      return;
+    }
+    toast.success("Quiz discarded");
+    finish();
+  };
+
+  const handleSave = async () => {
+    if (!generated || loading) return;
+    const error = validateQuizDraft(draftTitle, draftQuestions);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+
+    setLoading(true);
+    const result = await saveQuizContent(
+      generated.id,
+      toQuizContentPayload(draftTitle, draftQuestions),
+    );
+    setLoading(false);
+
+    if (!result.success) {
+      toast.error(result.message || "Could not save the quiz");
+      return;
+    }
+
+    const quiz = { ...generated, ...result.data };
+    onQuizCreated?.(quiz);
+    toast.success("Quiz saved");
+    finish();
+    navigate("/quiz", { state: { activeQuizId: quiz.id } });
   };
 
   const handleGenerate = async () => {
@@ -61,10 +125,9 @@ export default function AIQuizGenerator({
       sourceDocumentId: documentId,
     });
 
-    onQuizCreated?.(quiz);
-    toast.success("Quiz created from your notes");
-    onOpenChange(false);
-    navigate("/quiz", { state: { activeQuizId: quiz.id } });
+    setGenerated(quiz);
+    setDraftTitle(quiz.title ?? "");
+    setDraftQuestions(quiz.questions.map(toDraftQuestion));
   };
 
   if (!open) return null;
@@ -73,9 +136,13 @@ export default function AIQuizGenerator({
     <div className="fixed inset-0 z-[70] flex items-center justify-center">
       <div
         className="absolute inset-0 bg-foreground/20 backdrop-blur-sm"
-        onClick={handleClose}
+        onClick={reviewing ? undefined : handleClose}
       />
-      <div className="relative bg-card rounded-2xl p-6 shadow-soft-lg w-full max-w-md z-10">
+      <div
+        className={`relative bg-card rounded-2xl p-6 shadow-soft-lg w-full z-10 ${
+          reviewing ? "max-w-2xl max-h-[90vh] flex flex-col" : "max-w-md"
+        }`}
+      >
         <button
           type="button"
           onClick={handleClose}
@@ -91,7 +158,7 @@ export default function AIQuizGenerator({
           </div>
           <div>
             <h2 className="text-lg font-display font-semibold text-foreground">
-              Generate quiz
+              {reviewing ? "Review quiz" : "Generate quiz"}
             </h2>
             <p className="text-xs text-muted-foreground truncate max-w-[240px]">
               {documentTitle || "Document"}
@@ -99,7 +166,41 @@ export default function AIQuizGenerator({
           </div>
         </div>
 
-        {!supported ? (
+        {reviewing ? (
+          <>
+            <p className="text-xs text-muted-foreground mb-4">
+              Edit questions, answers and explanations before you start. Changes are saved when you click Save.
+            </p>
+            <div className="flex-1 overflow-y-auto -mx-6 px-6">
+              <QuizReviewEditor
+                title={draftTitle}
+                onTitleChange={setDraftTitle}
+                questions={draftQuestions}
+                onChange={setDraftQuestions}
+                disabled={loading}
+              />
+            </div>
+            <div className="flex gap-2 pt-4">
+              <button
+                type="button"
+                onClick={handleDiscard}
+                disabled={loading}
+                className="h-10 px-4 rounded-full border border-border text-sm text-muted-foreground hover:text-destructive hover:border-destructive transition-colors disabled:opacity-50"
+              >
+                Discard
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={loading}
+                className="flex-1 inline-flex items-center justify-center gap-2 h-10 rounded-full bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Save and start quiz
+              </button>
+            </div>
+          </>
+        ) : !supported ? (
           <p className="text-sm text-muted-foreground">
             This document type cannot be turned into a quiz yet.
           </p>

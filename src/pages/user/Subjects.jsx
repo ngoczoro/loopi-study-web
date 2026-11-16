@@ -42,6 +42,7 @@ import AILearningResourcesPanel from "@/components/ai/AILearningResourcesPanel";
 import AIDocumentSummary from "@/components/ai/AIDocumentSummary";
 import AIDocumentSearchPanel from "@/components/ai/AIDocumentSearchPanel";
 import AIQuizGenerator from "@/components/ai/AIQuizGenerator";
+import AiQuizPreview from "@/components/ai/AiQuizPreview";
 import AIFlashcardGenerator from "@/components/ai/AIFlashcardGenerator";
 import DeckFormModal from "@/components/flashcards/DeckFormModal";
 import { useFlashcards } from "@/hooks/useFlashcards";
@@ -116,6 +117,7 @@ export default function Subjects() {
     addQuiz,
     fetchQuizzes,
     upsertQuiz,
+    deleteQuiz,
   } = useAppStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -300,6 +302,8 @@ export default function Subjects() {
     }
 
     setAiLoading(true);
+    // The backend saves every generated quiz; drop the unsaved preview being replaced.
+    if (aiPreview) await deleteQuiz(aiPreview.id);
     const result = await generateSubjectQuiz(quizSubject.id, {
       topic: aiTopic.trim(),
       difficulty: aiDifficulty,
@@ -316,18 +320,26 @@ export default function Subjects() {
     const quiz = mapGeneratedQuizForStore(result.data, {
       subjectId: quizSubject.id,
     });
-    upsertQuiz(quiz);
     setAiPreview(quiz);
   };
 
-  const handleSaveQuiz = () => {
-    if (!aiPreview || !quizSubject) return;
+  // Closing without "Save Quiz" discards the generated preview.
+  const closeQuizModal = () => {
+    if (aiLoading) return;
+    if (aiPreview) void deleteQuiz(aiPreview.id);
+    setQuizSubject(null);
+    setAiPreview(null);
+  };
 
+  const handleSaveQuiz = (savedQuiz) => {
+    if (!savedQuiz || !quizSubject) return;
+
+    upsertQuiz(savedQuiz);
     toast.success("Quiz saved! 🎉");
     setQuizSubject(null);
     setAiPreview(null);
     setAiTopic("");
-    navigate("/quiz", { state: { activeQuizId: aiPreview.id } });
+    navigate("/quiz", { state: { activeQuizId: savedQuiz.id } });
   };
 
   const handleStartStudy = (s) => navigate(`/pomodoro?subjectId=${s.id}`);
@@ -1955,10 +1967,7 @@ export default function Subjects() {
           <div className="fixed inset-0 z-[70] flex items-center justify-center">
             <div
               className="absolute inset-0 bg-foreground/20 backdrop-blur-sm"
-              onClick={() => {
-                setQuizSubject(null);
-                setAiPreview(null);
-              }}
+              onClick={closeQuizModal}
             />
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -1967,11 +1976,9 @@ export default function Subjects() {
               className="relative bg-card rounded-2xl p-6 shadow-soft-lg w-full max-w-lg z-10 max-h-[85vh] overflow-auto"
             >
               <button
-                onClick={() => {
-                  setQuizSubject(null);
-                  setAiPreview(null);
-                }}
-                className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
+                onClick={closeQuizModal}
+                disabled={aiLoading}
+                className="absolute top-4 right-4 text-muted-foreground hover:text-foreground disabled:opacity-50"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -2040,49 +2047,13 @@ export default function Subjects() {
                   </button>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  <h3 className="text-sm font-semibold text-foreground">
-                    {aiPreview.title}
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    {aiPreview.questions.length} questions generated
-                  </p>
-                  <div className="space-y-2 max-h-60 overflow-auto">
-                    {aiPreview.questions.map((q, i) => (
-                      <div key={i} className="bg-secondary/40 rounded-xl p-3">
-                        <p className="text-xs font-medium text-foreground mb-1">
-                          Q{i + 1}. {q.question}
-                        </p>
-                        <div className="space-y-0.5">
-                          {q.options.map((o, j) => (
-                            <p
-                              key={j}
-                              className={`text-xs ${j === q.correctIndex ? "text-primary font-medium" : "text-muted-foreground"}`}
-                            >
-                              {String.fromCharCode(65 + j)}) {o}{" "}
-                              {j === q.correctIndex && "✓"}
-                            </p>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleGenerateQuiz(true)}
-                      disabled={aiLoading}
-                      className="flex-1 h-10 rounded-full bg-secondary text-secondary-foreground font-medium text-sm hover:bg-secondary/80 disabled:opacity-50"
-                    >
-                      Regenerate
-                    </button>
-                    <button
-                      onClick={handleSaveQuiz}
-                      className="flex-1 h-10 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:scale-[1.01] transition-transform"
-                    >
-                      ✅ Save Quiz
-                    </button>
-                  </div>
-                </div>
+                <AiQuizPreview
+                  key={aiPreview.id}
+                  quiz={aiPreview}
+                  regenerating={aiLoading}
+                  onRegenerate={() => handleGenerateQuiz(true)}
+                  onSaved={handleSaveQuiz}
+                />
               )}
             </motion.div>
           </div>

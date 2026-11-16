@@ -98,6 +98,25 @@ export const updateQuiz = async (quizId, payload) => {
   }
 };
 
+/** Replace a quiz's title and/or questions. Each question: { question, options[4], correctIndex, explanation, difficulty }. */
+export const saveQuizContent = async (quizId, payload) => {
+  try {
+    const response = await api.put(`/quizzes/${quizId}`, payload);
+    return {
+      success: true,
+      data: mapQuizForUI(response.data.data),
+      message: response.data.message,
+    };
+  } catch (error) {
+    console.error("Error saving quiz:", error);
+    return {
+      success: false,
+      message: getApiErrorMessage(error, "Failed to save quiz"),
+      error: error.response?.data,
+    };
+  }
+};
+
 export const deleteQuiz = async (quizId) => {
   try {
     const response = await api.delete(`/quizzes/${quizId}`);
