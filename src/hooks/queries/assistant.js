@@ -9,6 +9,7 @@ import {
   listAssistantConversations,
   listAssistantMessages,
   listAssistantSources,
+  streamAssistantAnswer,
   updateAssistantConversation,
 } from "@/services/assistantService";
 
@@ -129,6 +130,17 @@ export function useAssistantMessages(conversationId) {
   };
 }
 
+function appendExchange(queryClient, conversationId, { userMessage, assistantMessage, conversation }) {
+  queryClient.setQueryData(queryKeys.assistant.messages(conversationId), (messages = []) => [
+    ...messages.filter(
+      (item) => item.id !== userMessage.id && item.id !== assistantMessage.id,
+    ),
+    userMessage,
+    assistantMessage,
+  ]);
+  upsertConversation(queryClient, conversation);
+}
+
 export function useAskAssistant() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -137,17 +149,20 @@ export function useAskAssistant() {
         await askAssistant(conversationId, content),
         "The assistant could not answer. Please try again.",
       ),
-    onSuccess: ({ userMessage, assistantMessage, conversation }, { conversationId }) => {
-      queryClient.setQueryData(queryKeys.assistant.messages(conversationId), (messages = []) => [
-        ...messages.filter(
-          (item) => item.id !== userMessage.id && item.id !== assistantMessage.id,
-        ),
-        userMessage,
-        assistantMessage,
-      ]);
-      upsertConversation(queryClient, conversation);
-    },
+    onSuccess: (result, { conversationId }) => appendExchange(queryClient, conversationId, result),
     // The server keeps the question even when the answer fails, so resync.
+    onError: (_error, { conversationId }) =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.assistant.messages(conversationId) }),
+  });
+}
+
+/** Streamed version of useAskAssistant. Pass `onEvent` to render tokens as they arrive. */
+export function useStreamAskAssistant() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ conversationId, content, onEvent, signal }) =>
+      streamAssistantAnswer(conversationId, content, { onEvent, signal }),
+    onSuccess: (result, { conversationId }) => appendExchange(queryClient, conversationId, result),
     onError: (_error, { conversationId }) =>
       queryClient.invalidateQueries({ queryKey: queryKeys.assistant.messages(conversationId) }),
   });

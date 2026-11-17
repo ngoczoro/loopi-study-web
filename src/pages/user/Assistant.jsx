@@ -11,8 +11,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { isMockEnabled } from "@/mocks/mockUtils";
 import {
   useAskAssistant,
+  useStreamAskAssistant,
   useAssistantConversations,
   useAssistantMessages,
   useAssistantSources,
@@ -75,12 +77,18 @@ export default function Assistant() {
   const createConversation = useCreateAssistantConversation();
   const updateConversation = useUpdateAssistantConversation();
   const ask = useAskAssistant();
+  const streamAsk = useStreamAskAssistant();
 
   const [draftScope, setDraftScope] = useState(() => scopeFromParams(searchParams));
+  // { conversationId, content, status: "sending" | "failed", error, answer, citations }
   const [pending, setPending] = useState(null);
   const [scopeOpen, setScopeOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const scrollRef = useRef(null);
+  const streamAbortRef = useRef(null);
+
+  // Stop an in-flight answer when leaving the page.
+  useEffect(() => () => streamAbortRef.current?.abort(), []);
 
   const conversation = conversations.find((item) => item.id === conversationId) ?? null;
   const scope = conversationId ? (conversation?.scope ?? ALL_SCOPE) : draftScope;
@@ -88,24 +96,72 @@ export default function Assistant() {
   const visiblePending = pending && pending.conversationId === (conversationId ?? null) ? pending : null;
   const isNewChat = !conversationId && !visiblePending;
 
+  const streamedLength = visiblePending?.answer?.length ?? 0;
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [messages.length, visiblePending?.status]);
+    // Instant while tokens stream in; smooth scrolling on every token would lag behind.
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: streamedLength ? "auto" : "smooth" });
+  }, [messages.length, visiblePending?.status, streamedLength]);
+
+  const updatePending = (patch) =>
+    setPending((current) => (current ? { ...current, ...patch } : current));
+
+  // Render tokens as they arrive; `reset` means the server switched provider mid-answer.
+  const onStreamEvent = (name, data) => {
+    if (name === "sources") updatePending({ citations: data.citations });    if (name === "token") {
+      setPending((current) =>
+        current ? { ...current, answer: (current.answer ?? "") + data.text } : current,
+      );
+    }
+    if (name === "reset") updatePending({ answer: "" });
+  };
+
+  const requestAnswer = async (targetId, content) => {
+    if (isMockEnabled()) {
+      await ask.mutateAsync({ conversationId: targetId, content });
+      return;
+    }
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+    try {
+      await streamAsk.mutateAsync({
+        conversationId: targetId,
+        content,
+        onEvent: onStreamEvent,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      // Stream unavailable before any text (old server, proxy): ask the normal endpoint.
+      if (error.name === "AbortError" || !error.canRetryWithoutStream) throw error;
+      updatePending({ answer: "", citations: [] });
+      await ask.mutateAsync({ conversationId: targetId, content });
+    } finally {
+      if (streamAbortRef.current === controller) streamAbortRef.current = null;
+    }
+  };
 
   const send = async (content) => {
     let targetId = conversationId ?? null;
-    setPending({ conversationId: targetId, content, status: "sending", error: null });
+    const start = {
+      content,
+      status: "sending",
+      error: null,
+      answer: "",
+      citations: [],
+      startedAt: new Date().toISOString(),
+    };
+    setPending({ conversationId: targetId, ...start });
     try {
       if (!targetId) {
         const created = await createConversation.mutateAsync({ scope: draftScope });
         targetId = created.id;
-        setPending({ conversationId: targetId, content, status: "sending", error: null });
+        setPending({ conversationId: targetId, ...start });
         navigate(`/assistant/${targetId}`);
       }
-      await ask.mutateAsync({ conversationId: targetId, content });
+      await requestAnswer(targetId, content);
       setPending(null);
     } catch (error) {
+      if (error.name === "AbortError") return;
       setPending({ conversationId: targetId, content, status: "failed", error: error.message });
     }
   };
@@ -124,6 +180,7 @@ export default function Assistant() {
   };
 
   const startNewChat = () => {
+    streamAbortRef.current?.abort();
     setPending(null);
     setDraftScope(ALL_SCOPE);
     setSidebarOpen(false);
@@ -220,7 +277,25 @@ export default function Assistant() {
               {visiblePending?.status === "sending" && (
                 <>
                   <UserQuestion content={visiblePending.content} muted />
-                  <ThinkingIndicator />
+                  {visiblePending.answer ? (
+                    <AssistantMessage
+                      message={{
+                        id: "streaming",
+                        role: "assistant",
+                        content: visiblePending.answer,
+                        answerStatus: "answered",
+                        citations: visiblePending.citations,
+                        createdAt: visiblePending.startedAt,                      }}
+                    />
+                  ) : (
+                    <ThinkingIndicator
+                      label={
+                        visiblePending.citations?.length
+                          ? `Reading ${visiblePending.citations.length} passages`
+                          : undefined
+                      }
+                    />
+                  )}
                 </>
               )}
 

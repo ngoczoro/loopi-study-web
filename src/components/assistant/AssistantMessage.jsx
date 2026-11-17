@@ -131,8 +131,10 @@ function AssistantAnswer({ message }) {
         )}
 
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-          <span>{timeFormatter.format(new Date(message.createdAt))}</span>
-          {!notFound && (
+          {/* Intl throws on an invalid date, which would blank the whole page. */}
+          {message.createdAt && !Number.isNaN(Date.parse(message.createdAt)) && (
+            <span>{timeFormatter.format(new Date(message.createdAt))}</span>
+          )}          {!notFound && (
             <button
               type="button"
               onClick={copy}
@@ -164,14 +166,14 @@ export function UserQuestion({ content, muted = false }) {
   );
 }
 
-export function ThinkingIndicator() {
+export function ThinkingIndicator({ label = "Searching your documents" }) {
   return (
     <div className="flex gap-3">
       <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
         <Sparkles className="h-4 w-4 animate-pulse" />
       </span>
       <div className="flex items-center gap-2 rounded-2xl bg-secondary/60 px-4 py-2.5 text-sm text-muted-foreground">
-        Searching your documents
+        {label}
         <span className="flex gap-1">
           {[0, 150, 300].map((delay) => (
             <span
