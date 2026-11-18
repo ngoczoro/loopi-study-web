@@ -9,8 +9,15 @@ import { toDraftQuestion, toQuizContentPayload, validateQuizDraft } from "@/lib/
  * Preview of a generated (already saved) quiz with an optional edit mode.
  * `onSaved(quiz)` gets the edited quiz, or the original one when nothing was edited.
  * Mount with `key={quiz.id}` so a regenerated quiz starts a fresh draft.
+ * `regeneratingLabel` is the live progress line shown while a new quiz is generated.
  */
-export default function AiQuizPreview({ quiz, regenerating, onRegenerate, onSaved }) {
+export default function AiQuizPreview({
+  quiz,
+  regenerating,
+  regeneratingLabel,
+  onRegenerate,
+  onSaved,
+}) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(() => quiz.title ?? "");
   const [questions, setQuestions] = useState(() => quiz.questions.map(toDraftQuestion));
@@ -100,9 +107,12 @@ export default function AiQuizPreview({ quiz, regenerating, onRegenerate, onSave
           type="button"
           onClick={onRegenerate}
           disabled={busy}
-          className="flex-1 h-10 rounded-full bg-secondary text-secondary-foreground font-medium text-sm hover:bg-secondary/80 disabled:opacity-50"
+          className="flex-1 h-10 rounded-full bg-secondary text-secondary-foreground font-medium text-sm hover:bg-secondary/80 disabled:opacity-50 inline-flex items-center justify-center gap-2 px-3"
         >
-          Regenerate
+          {regenerating ? <Loader2 className="h-4 w-4 animate-spin shrink-0" /> : null}
+          <span className="truncate">
+            {regenerating ? regeneratingLabel || "Regenerating..." : "Regenerate"}
+          </span>
         </button>
         <button
           type="button"

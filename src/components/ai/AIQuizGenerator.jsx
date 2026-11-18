@@ -11,6 +11,7 @@ import {
 } from "@/services/aiService";
 import { deleteQuiz, saveQuizContent } from "@/services/quizService";
 import QuizReviewEditor from "./QuizReviewEditor";
+import { useGenerationCounter } from "@/hooks/useGenerationCounter";
 import {
   toDraftQuestion,
   toQuizContentPayload,
@@ -39,6 +40,8 @@ export default function AIQuizGenerator({
   const [difficulty, setDifficulty] = useState("mixed");
   const [numberOfQuestions, setNumberOfQuestions] = useState(5);
   const [loading, setLoading] = useState(false);
+  // Counts generated questions up while the server works ("Generating question 3/5"…).
+  const counter = useGenerationCounter("questions");
   // Set after generation: the quiz is already saved, the user reviews and edits it here.
   const [generated, setGenerated] = useState(null);
   const [draftTitle, setDraftTitle] = useState("");
@@ -108,17 +111,24 @@ export default function AIQuizGenerator({
     if (!documentId || loading || !supported) return;
 
     setLoading(true);
+    counter.start(numberOfQuestions);
     const result = await generateDocumentQuiz(documentId, {
       difficulty,
       numberOfQuestions,
       forceRegenerate: true,
+      onProgress: counter.update,
     });
-    setLoading(false);
 
     if (!result.success) {
+      counter.reset();
+      setLoading(false);
       toast.error(result.message || "Could not generate a quiz from this document");
       return;
     }
+    // Let the count reach the number of questions before the review step replaces it.
+    await counter.finish(result.data?.questions?.length);
+    counter.reset();
+    setLoading(false);
 
     const quiz = mapGeneratedQuizForStore(result.data, {
       subjectId: document?.subjectId ?? subjectId ?? null,
@@ -257,7 +267,7 @@ export default function AIQuizGenerator({
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Generating quiz...
+                  {counter.label || "Generating quiz..."}
                 </>
               ) : (
                 <>

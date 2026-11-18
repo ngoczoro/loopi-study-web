@@ -43,6 +43,7 @@ import AIDocumentSummary from "@/components/ai/AIDocumentSummary";
 import AIDocumentSearchPanel from "@/components/ai/AIDocumentSearchPanel";
 import AIQuizGenerator from "@/components/ai/AIQuizGenerator";
 import AiQuizPreview from "@/components/ai/AiQuizPreview";
+import { useGenerationCounter } from "@/hooks/useGenerationCounter";
 import AIFlashcardGenerator from "@/components/ai/AIFlashcardGenerator";
 import DeckFormModal from "@/components/flashcards/DeckFormModal";
 import { useFlashcards } from "@/hooks/useFlashcards";
@@ -163,6 +164,8 @@ export default function Subjects() {
   const [aiDifficulty, setAiDifficulty] = useState("mixed");
   const [aiNumberOfQuestions, setAiNumberOfQuestions] = useState(5);
   const [aiLoading, setAiLoading] = useState(false);
+  // Counts generated questions up while the server works ("Generating question 3/5"…).
+  const counter = useGenerationCounter("questions");
   const [aiPreview, setAiPreview] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingSubjectId, setEditingSubjectId] = useState(null);
@@ -304,18 +307,24 @@ export default function Subjects() {
     setAiLoading(true);
     // The backend saves every generated quiz; drop the unsaved preview being replaced.
     if (aiPreview) await deleteQuiz(aiPreview.id);
+    counter.start(aiNumberOfQuestions);
     const result = await generateSubjectQuiz(quizSubject.id, {
       topic: aiTopic.trim(),
       difficulty: aiDifficulty,
       numberOfQuestions: aiNumberOfQuestions,
       forceRegenerate,
+      onProgress: counter.update,
     });
-    setAiLoading(false);
-
     if (!result.success) {
+      counter.reset();
+      setAiLoading(false);
       toast.error(result.message || "Could not generate a quiz from your notes");
       return;
     }
+    // Let the count reach the number of questions before the preview shows them.
+    await counter.finish(result.data?.questions?.length);
+    counter.reset();
+    setAiLoading(false);
 
     const quiz = mapGeneratedQuizForStore(result.data, {
       subjectId: quizSubject.id,
@@ -2037,7 +2046,7 @@ export default function Subjects() {
                     {aiLoading ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />{" "}
-                        Generating...
+                        {counter.label || "Generating..."}
                       </>
                     ) : (
                       <>
@@ -2051,6 +2060,7 @@ export default function Subjects() {
                   key={aiPreview.id}
                   quiz={aiPreview}
                   regenerating={aiLoading}
+                  regeneratingLabel={counter.label}
                   onRegenerate={() => handleGenerateQuiz(true)}
                   onSaved={handleSaveQuiz}
                 />

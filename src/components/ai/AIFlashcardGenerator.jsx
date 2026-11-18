@@ -9,6 +9,7 @@ import GroupModalShell, {
 } from "@/components/groups/GroupModalShell";
 import { useFlashcards } from "@/hooks/useFlashcards";
 import { generateDocumentFlashcards } from "@/services/aiService";
+import { useGenerationCounter } from "@/hooks/useGenerationCounter";
 
 const CARD_COUNTS = [5, 10, 15, 20];
 
@@ -22,6 +23,8 @@ export default function AIFlashcardGenerator({
   const { createDeck, createCards, deleteDeck } = useFlashcards();
   const [numberOfCards, setNumberOfCards] = useState(5);
   const [loading, setLoading] = useState(false);
+  // Counts generated cards up while the server works ("Generating card 3/5"…).
+  const counter = useGenerationCounter("cards");
   const [drafts, setDrafts] = useState(null);
 
   const close = () => {
@@ -34,19 +37,26 @@ export default function AIFlashcardGenerator({
   const generate = async () => {
     if (!note?.id || loading) return;
     setLoading(true);
-    const result = await generateDocumentFlashcards(note.id, { numberOfCards });
-    setLoading(false);
-
-    if (!result.success) {
-      toast.error(result.message || "Could not create flashcards from this note");
-      return;
-    }
+    counter.start(numberOfCards);
+    const result = await generateDocumentFlashcards(note.id, {
+      numberOfCards,
+      onProgress: counter.update,
+    });
 
     const cards = Array.isArray(result.data?.cards) ? result.data.cards : [];
-    if (cards.length === 0) {
-      toast.error("Could not create flashcards from this note. Please try again later.");
+    if (!result.success || cards.length === 0) {
+      counter.reset();
+      setLoading(false);
+      toast.error(
+        (!result.success && result.message) ||
+          "Could not create flashcards from this note. Please try again later.",
+      );
       return;
     }
+    // Let the count reach the number of cards before the drafts replace it.
+    await counter.finish(cards.length);
+    counter.reset();
+    setLoading(false);
 
     setDrafts(
       cards.map((card, index) => ({
@@ -206,7 +216,9 @@ export default function AIFlashcardGenerator({
               ) : (
                 <Layers className="h-4 w-4" />
               )}
-              {loading ? "Creating cards..." : "Create flashcards"}
+              {loading
+                ? counter.label || "Creating cards..."
+                : "Create flashcards"}
             </button>
           </div>
         </div>

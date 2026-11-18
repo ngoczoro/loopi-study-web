@@ -13,6 +13,7 @@ import {
 import { useLocation, useNavigate } from "react-router-dom";
 import QuizList from "@/components/QuizList";
 import AiQuizPreview from "@/components/ai/AiQuizPreview";
+import { useGenerationCounter } from "@/hooks/useGenerationCounter";
 import QuizReviewSummary from "@/components/QuizReviewSummary";
 import QuizWeakTopicsCard from "@/components/QuizWeakTopicsCard";
 import QuizReviewQuestionCard from "@/components/QuizReviewQuestionCard";
@@ -67,6 +68,8 @@ export default function Quiz() {
   const [aiDifficulty, setAiDifficulty] = useState("mixed");
   const [aiNumberOfQuestions, setAiNumberOfQuestions] = useState(5);
   const [aiLoading, setAiLoading] = useState(false);
+  // Counts generated questions up while the server works ("Generating question 3/5"…).
+  const counter = useGenerationCounter("questions");
   const [aiPreview, setAiPreview] = useState(null);
 
   const quiz = activeQuiz
@@ -365,11 +368,13 @@ export default function Quiz() {
     // The backend saves every generated quiz; drop the unsaved preview being replaced.
     if (aiPreview) await deleteQuiz(aiPreview.id);
 
+    counter.start(aiNumberOfQuestions);
     const options = {
       topic: aiTopic.trim(),
       difficulty: aiDifficulty,
       numberOfQuestions: aiNumberOfQuestions,
       forceRegenerate,
+      onProgress: counter.update,
     };
 
     const result = aiSubjectId
@@ -379,12 +384,16 @@ export default function Quiz() {
           subjectId: null,
         });
 
-    setAiLoading(false);
-
     if (!result.success) {
+      counter.reset();
+      setAiLoading(false);
       toast.error(result.message || "Could not generate a quiz from your notes");
       return;
     }
+    // Let the count reach the number of questions before the preview shows them.
+    await counter.finish(result.data?.questions?.length);
+    counter.reset();
+    setAiLoading(false);
 
     const quiz = mapGeneratedQuizForStore(result.data, {
       subjectId: aiSubjectId || null,
@@ -529,7 +538,8 @@ export default function Quiz() {
                     >
                       {aiLoading ? (
                         <>
-                          <Loader2 className="h-4 w-4 animate-spin" /> Generating...
+                          <Loader2 className="h-4 w-4 animate-spin" />{" "}
+                          {counter.label || "Generating..."}
                         </>
                       ) : (
                         <>
@@ -543,6 +553,7 @@ export default function Quiz() {
                     key={aiPreview.id}
                     quiz={aiPreview}
                     regenerating={aiLoading}
+                    regeneratingLabel={counter.label}
                     onRegenerate={() => handleAiGenerate(true)}
                     onSaved={handleConfirmQuiz}
                   />

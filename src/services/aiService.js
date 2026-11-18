@@ -1,5 +1,13 @@
 import api from "./api";
 import { getApiErrorMessage } from "../lib/apiErrorUtils.js";
+import { postWithProgress } from "../lib/generationRequest.js";
+
+/**
+ * POST a quiz/flashcard generation. With `onProgress`, the server streams progress events
+ * (see postWithProgress); without it, a plain request as before. Both resolve like api.post.
+ */
+const postGeneration = (path, body, onProgress) =>
+  onProgress ? postWithProgress(path, body, onProgress) : api.post(path, body);
 
 const AI_SUMMARY_FALLBACK =
   "AI summary could not be generated. Please try again later.";
@@ -91,16 +99,18 @@ export const generateDocumentQuiz = async (
     difficulty = defaultQuizOptions.difficulty,
     numberOfQuestions = defaultQuizOptions.numberOfQuestions,
     forceRegenerate = defaultQuizOptions.forceRegenerate,
+    onProgress,
   } = {},
 ) => {
   try {
-    const response = await api.post(
+    const response = await postGeneration(
       `/ai/documents/${documentId}/generate-quiz`,
       {
         difficulty,
         numberOfQuestions,
         forceRegenerate,
       },
+      onProgress,
     );
     return {
       success: true,
@@ -137,15 +147,15 @@ export const generateSubjectQuiz = async (
     difficulty = defaultQuizOptions.difficulty,
     numberOfQuestions = defaultQuizOptions.numberOfQuestions,
     forceRegenerate = defaultQuizOptions.forceRegenerate,
+    onProgress,
   } = {},
 ) => {
   try {
-    const response = await api.post(`/ai/subjects/${subjectId}/generate-quiz`, {
-      topic,
-      difficulty,
-      numberOfQuestions,
-      forceRegenerate,
-    });
+    const response = await postGeneration(
+      `/ai/subjects/${subjectId}/generate-quiz`,
+      { topic, difficulty, numberOfQuestions, forceRegenerate },
+      onProgress,
+    );
     return {
       success: true,
       data: response.data.data,
@@ -174,15 +184,20 @@ export const generatePracticeQuiz = async ({
   difficulty = defaultQuizOptions.difficulty,
   numberOfQuestions = defaultQuizOptions.numberOfQuestions,
   forceRegenerate = defaultQuizOptions.forceRegenerate,
+  onProgress,
 } = {}) => {
   try {
-    const response = await api.post("/ai/generate-quiz", {
-      topic,
-      subjectId: subjectId || undefined,
-      difficulty,
-      numberOfQuestions,
-      forceRegenerate,
-    });
+    const response = await postGeneration(
+      "/ai/generate-quiz",
+      {
+        topic,
+        subjectId: subjectId || undefined,
+        difficulty,
+        numberOfQuestions,
+        forceRegenerate,
+      },
+      onProgress,
+    );
     return {
       success: true,
       data: response.data.data,
@@ -207,12 +222,13 @@ export const generatePracticeQuiz = async ({
 
 export const generateDocumentFlashcards = async (
   documentId,
-  { numberOfCards = 5 } = {},
+  { numberOfCards = 5, onProgress } = {},
 ) => {
   try {
-    const response = await api.post(
+    const response = await postGeneration(
       `/ai/documents/${documentId}/generate-flashcards`,
       { numberOfCards },
+      onProgress,
     );
     return {
       success: true,
