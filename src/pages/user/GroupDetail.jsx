@@ -82,6 +82,7 @@ export default function GroupDetail() {
           onOpenMembers={() => setInfoOpen(true)}
           onChangeView={changeView}
           callCount={callStatus.count}
+          meetActive={Boolean(callStatus.meet)}
         />
         {callLive && view !== "call" && (
           <button

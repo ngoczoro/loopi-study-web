@@ -31,6 +31,33 @@ const CAMERA_CAPTURE = { resolution: VideoPresets.h720.resolution, facingMode: "
 export const GRID_PAGE_SIZE = 9;
 export const STAGE_PAGE_SIZE = 4;
 
+/**
+ * Failures of the call system itself. Only these suggest Google Meet; a full room
+ * (CALL_ROOM_FULL) does not, since the rest of the group is still on Loopi.
+ */
+const SYSTEM_FAILURES = new Set([
+  "CALL_NOT_CONFIGURED",
+  "CALL_SERVER_UNAVAILABLE",
+  "CALL_CAPACITY_REACHED",
+  "CALL_CONNECT_FAILED",
+  "CALL_UNSTABLE",
+]);
+const UNSTABLE_DROPS = 3;
+const UNSTABLE_WINDOW_MS = 2 * 60 * 1000;
+const EXPECTED_DISCONNECTS = new Set([
+  DisconnectReason.CLIENT_INITIATED,
+  DisconnectReason.DUPLICATE_IDENTITY,
+  DisconnectReason.PARTICIPANT_REMOVED,
+  DisconnectReason.ROOM_DELETED,
+]);
+
+const failure = (code, message, fallback = null) => ({
+  code: code ?? null,
+  message,
+  fallback,
+  system: SYSTEM_FAILURES.has(code),
+});
+
 export function currentCallUser() {
   const user = getAuthUser();
   const userId = user?.id ?? user?.userId ?? null;
@@ -140,6 +167,7 @@ export function useGroupCall(groupId, { visible = true } = {}) {
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [mediaMessage, setMediaMessage] = useState(null);
   const [callError, setCallError] = useState(null);
+  const [callFailure, setCallFailure] = useState(null);
   const [remotes, setRemotes] = useState([]);
   const [startedAt, setStartedAt] = useState(null);
   const [reconnecting, setReconnecting] = useState(false);
@@ -160,6 +188,7 @@ export function useGroupCall(groupId, { visible = true } = {}) {
   const lastSpokeAtRef = useRef(new Map());
   const orderRef = useRef([]);
   const screenRef = useRef(null);
+  const dropsRef = useRef([]);
 
   useEffect(() => {
     groupIdRef.current = groupId;
@@ -325,7 +354,17 @@ export function useGroupCall(groupId, { visible = true } = {}) {
         if (roomRef.current !== room) return;
         roomRef.current = null;
         stopLocalTracks();
-        if (mountedRef.current) resetToLobby(describeDisconnect(reason));
+        if (!mountedRef.current) return;
+        resetToLobby(describeDisconnect(reason));
+
+        if (EXPECTED_DISCONNECTS.has(reason)) return;
+        const now = Date.now();
+        dropsRef.current = [...dropsRef.current, now].filter((at) => now - at < UNSTABLE_WINDOW_MS);
+        if (dropsRef.current.length >= UNSTABLE_DROPS) {
+          setCallFailure(
+            failure("CALL_UNSTABLE", "Your connection to the call keeps dropping."),
+          );
+        }
       });
 
     return room;
@@ -336,6 +375,7 @@ export function useGroupCall(groupId, { visible = true } = {}) {
     joinLockRef.current = true;
     setJoining(true);
     setCallError(null);
+    setCallFailure(null);
     let room = null;
 
     try {
@@ -348,7 +388,11 @@ export function useGroupCall(groupId, { visible = true } = {}) {
       const result = await requestCallToken(groupIdRef.current);
       if (!mountedRef.current) return;
       if (!result.success) {
-        setCallError(result.message || "Could not start the call.");
+        const message = result.message || "Could not start the call.";
+        setCallError(message);
+        setCallFailure(
+          failure(result.error?.code, message, result.error?.details?.fallback ?? null),
+        );
         return;
       }
 
@@ -385,7 +429,9 @@ export function useGroupCall(groupId, { visible = true } = {}) {
         room.disconnect(false);
       }
       if (mountedRef.current) {
-        setCallError("Could not connect to the call server. Check your connection and try again.");
+        const message = "Could not connect to the call server. Check your connection and try again.";
+        setCallError(message);
+        setCallFailure(failure("CALL_CONNECT_FAILED", message));
       }
     } finally {
       joinLockRef.current = false;
@@ -542,6 +588,8 @@ export function useGroupCall(groupId, { visible = true } = {}) {
     sharing: Boolean(localScreenTrack),
     mediaMessage,
     callError,
+    callFailure,
+    clearCallFailure: () => setCallFailure(null),
     remotes,
     startedAt,
     linkStatus,

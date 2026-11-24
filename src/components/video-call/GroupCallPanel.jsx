@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  ExternalLink,
   Loader2,
   Mic,
   MicOff,
@@ -17,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useGroupMembers } from "@/hooks/queries/groups";
 import { useGroupCallStatus } from "@/hooks/queries/groupCall";
 import MemberAvatar from "@/components/groups/MemberAvatar";
+import MeetFallback from "./MeetFallback";
 import RemoteAudio from "./RemoteAudio";
 import VideoTile from "./VideoTile";
 import { GRID_PAGE_SIZE, STAGE_PAGE_SIZE, useGroupCall } from "./useGroupCall";
@@ -80,9 +82,9 @@ function CameraButton({ call }) {
   );
 }
 
-function CallControls({ call, onLeave, onTogglePeople, peopleOpen, count }) {
+function CallControls({ call, onLeave, onTogglePeople, peopleOpen, count, onMoveToMeet, meetOpen }) {
   return (
-    <div className="flex items-center justify-center gap-3 px-4 pb-5 pt-2">
+    <div className="flex flex-wrap items-center justify-center gap-3 px-4 pb-5 pt-2">
       <MicButton call={call} />
       <CameraButton call={call} />
       <ControlButton
@@ -92,6 +94,14 @@ function CallControls({ call, onLeave, onTogglePeople, peopleOpen, count }) {
         onClick={call.toggleScreenShare}
       >
         <MonitorUp className="h-5 w-5" />
+      </ControlButton>
+      <ControlButton
+        label="Move this call to Google Meet"
+        pressed={meetOpen}
+        tone={meetOpen ? "primary" : "default"}
+        onClick={onMoveToMeet}
+      >
+        <ExternalLink className="h-5 w-5" />
       </ControlButton>
       <ControlButton
         label="People"
@@ -253,6 +263,7 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
   const call = useGroupCall(group.id, { visible });
   const { status: callStatus, refresh: refreshCallStatus } = useGroupCallStatus(group.id);
   const [peopleOpen, setPeopleOpen] = useState(false);
+  const [moveToMeetOpen, setMoveToMeetOpen] = useState(false);
   const [page, setPage] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const inCall = call.phase === "in-call";
@@ -317,6 +328,19 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
 
           <InCallNow status={callStatus} />
 
+          {callStatus.meet ? (
+            <MeetFallback group={group} meet={callStatus.meet} variant="lobby" />
+          ) : (
+            call.callFailure?.system && (
+              <MeetFallback
+                group={group}
+                failure={call.callFailure}
+                variant="lobby"
+                onDismiss={call.clearCallFailure}
+              />
+            )
+          )}
+
           {call.mediaMessage && (
             <div className="flex flex-col items-center gap-2 text-center">
               <p className="text-sm text-destructive">{call.mediaMessage}</p>
@@ -332,7 +356,7 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
             </div>
           )}
 
-          {call.callError && (
+          {call.callError && !(call.callFailure?.system && !callStatus.meet) && (
             <p role="alert" className="max-w-md text-center text-sm text-destructive">
               {call.callError}
             </p>
@@ -421,6 +445,24 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
         </p>
       )}
 
+      {(callStatus.meet || moveToMeetOpen) && (
+        <div className="mx-3 mb-3 flex justify-center sm:mx-4">
+          <MeetFallback
+            group={group}
+            meet={callStatus.meet}
+            variant="call"
+            title="Move this call to Google Meet?"
+            description="Everyone in this call will get a link to the same Meet, and it is posted in the group chat. Use it if the call keeps breaking up or the group needs more room."
+            onDismiss={() => setMoveToMeetOpen(false)}
+            onJoin={() => {
+              setMoveToMeetOpen(false);
+              call.leave();
+              onLeft?.();
+            }}
+          />
+        </div>
+      )}
+
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 sm:px-4">
         {stageVisible && (
           <div
@@ -472,6 +514,8 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
 
       <CallControls
         call={call}
+        meetOpen={moveToMeetOpen || Boolean(callStatus.meet)}
+        onMoveToMeet={() => setMoveToMeetOpen((open) => !open)}
         peopleOpen={peopleOpen}
         onTogglePeople={() => setPeopleOpen((open) => !open)}
         onLeave={() => {

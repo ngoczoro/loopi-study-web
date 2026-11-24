@@ -7,7 +7,17 @@ import { unwrapServiceResult } from "@/lib/query/unwrap";
 import { useAuthQueryEnabled } from "@/lib/query/useAuthQueryEnabled";
 import { fetchCallStatus } from "@/services/groupCallService";
 
-const EMPTY_STATUS = Object.freeze({ active: false, count: 0, participants: [] });
+const EMPTY_STATUS = Object.freeze({ active: false, count: 0, participants: [], meet: null });
+
+/** Puts a Meet returned by a Meet request into the cached call status right away. */
+export function patchCachedCallMeet(queryClient, groupId, meet) {
+  queryClient.setQueryData(queryKeys.groups.call(groupId), (current) => ({
+    ...EMPTY_STATUS,
+    groupId,
+    ...(current ?? {}),
+    meet: meet ?? null,
+  }));
+}
 
 /**
  * Who is in a group's video call.
@@ -57,8 +67,9 @@ export function useGroupCallStatus(groupId, { enabled: enabledOption = true } = 
     if (enabled) refetch();
   }, [enabled, refetch]);
 
+  const status = query.data ?? EMPTY_STATUS;
   return {
-    status: query.data ?? EMPTY_STATUS,
+    status: { ...status, meet: status.meet ?? null },
     isLoading: query.isLoading,
     refresh,
   };

@@ -374,8 +374,20 @@ Kết nối do `useRealtimeConnection()` trong `Layout` quản lý (mở khi đ�
 | Method | Path | Mô tả |
 |---|---|---|
 | POST | `/groups/:groupId/call/token` | Cấp token để vào cuộc gọi của nhóm |
-| GET | `/groups/:groupId/call` | Ai đang trong cuộc gọi |
+| GET | `/groups/:groupId/call` | Ai đang trong cuộc gọi + Google Meet của nhóm (nếu có) |
+| POST | `/groups/:groupId/call/meet` | Tự tạo Google Meet cho nhóm (hoặc trả Meet đang dùng) |
+| PUT | `/groups/:groupId/call/meet` | Chia sẻ link Meet tự tạo bằng tay `{ url }` |
+| DELETE | `/groups/:groupId/call/meet` | Kết thúc Meet của nhóm |
 | POST | `/calls/livekit-webhook` | LiveKit gọi vào (server → server, không cần đăng nhập, xác thực bằng chữ ký) |
+
+### Chuỗi dự phòng
+
+1. LiveKit chính (`LIVEKIT_*`, ví dụ server tự host).
+2. LiveKit dự phòng (`LIVEKIT_FALLBACK_*`, ví dụ LiveKit Cloud): backend **tự** cấp token của server này khi server chính không trả lời (timeout 4 giây) hoặc vượt `CALL_MAX_ROOMS` / `CALL_MAX_TOTAL_PARTICIPANTS`. FE không cần biết, vì `url` lấy từ response.
+3. Google Meet: khi cả hai không dùng được, FE đề xuất Meet. Link lấy theo thứ tự: Meet nhóm đang dùng → backend tạo bằng Google Meet API → link cố định của nhóm (`backupMeetUrl`) → thành viên tự tạo ở meet.google.com/new rồi dán vào.
+
+- Nhóm **đang có người gọi** trên server nào thì người vào sau được cấp token của đúng server đó, kể cả khi server đó đã vượt ngưỡng, để không tách nhóm.
+- Phòng của nhóm đủ người (409) **không** đề xuất Meet.
 
 ### `POST /groups/:groupId/call/token`
 
@@ -386,21 +398,34 @@ Chỉ thành viên nhóm. Tạo room nếu chưa có (giới hạn `CALL_MAX_PAR
   "token": "<JWT của LiveKit>",
   "url": "wss://rtc.example.com",
   "roomName": "group-<groupId>",
-  "maxParticipants": 25
+  "maxParticipants": 25,
+  "server": "primary"
 }
 ```
+
+`server` là `primary` hoặc `fallback` (để debug; FE chỉ cần `url` và `token`).
 
 - FE kết nối bằng `room.connect(url, token)`. `url` lấy từ đây, không cấu hình ở FE.
 - Token: `identity = userId`, `name = fullName`, `metadata = {"avatarUrl": ...}`, quyền vào đúng room đó, publish/subscribe, hết hạn sau `CALL_TOKEN_TTL` (mặc định 2h).
 - Cùng tài khoản vào từ tab khác → LiveKit ngắt tab cũ (`DisconnectReason.DUPLICATE_IDENTITY`).
 
-| Mã | Khi nào |
-|---|---|
-| 403 | Không phải thành viên nhóm |
-| 404 | Không tìm thấy nhóm |
-| 409 | Phòng gọi đã đủ người (người đang vào lại từ tab khác không bị tính) |
-| 502 | Không kết nối được LiveKit |
-| 503 | Backend chưa cấu hình `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` |
+Lỗi có thêm `code` (luôn có, kể cả production) và `details.fallback` khi nên chuyển sang Meet:
+
+```json
+{ "success": false, "message": "...", "code": "CALL_CAPACITY_REACHED",
+  "details": { "fallback": { "meetUrl": null, "backupMeetUrl": "https://meet.google.com/abc-defg-hij" } } }
+```
+
+| HTTP | `code` | Khi nào | FE đề xuất Meet? |
+|---|---|---|---|
+| 403 | — | Không phải thành viên nhóm | Không |
+| 404 | — | Không tìm thấy nhóm | Không |
+| 409 | `CALL_ROOM_FULL` | Phòng của nhóm đã đủ người (người đang vào lại từ tab khác không bị tính) | **Không** |
+| 502 | `CALL_SERVER_UNAVAILABLE` | Không server LiveKit nào trả lời | Có |
+| 503 | `CALL_CAPACITY_REACHED` | Mọi server đều vượt ngưỡng phòng/người | Có |
+| 503 | `CALL_NOT_CONFIGURED` | Chưa cấu hình `LIVEKIT_*` | Có |
+
+FE tự thêm `CALL_CONNECT_FAILED` (kết nối LiveKit thất bại) và `CALL_UNSTABLE` (rớt kết nối 3 lần trong 2 phút); cả hai đều đề xuất Meet.
 
 ### `GET /groups/:groupId/call` → `CallStatus`
 
@@ -415,18 +440,43 @@ Chỉ thành viên nhóm. Tạo room nếu chưa có (giới hạn `CALL_MAX_PAR
 }
 ```
 
-Không có ai thì `active: false, count: 0, participants: []`. Người ẩn (load test, ghi hình) và người đã ngắt kết nối không được tính.
+Không có ai thì `active: false, count: 0, participants: []`. Người ẩn (load test, ghi hình) và người đã ngắt kết nối không được tính. Danh sách gộp từ mọi server LiveKit đã cấu hình.
+
+`meet` là Google Meet nhóm đang dùng, hoặc `null`:
+
+```json
+"meet": { "url": "https://meet.google.com/abc-defg-hij", "startedBy": { "userId": "<uuid>", "fullName": "..." }, "startedAt": "2026-11-25T08:00:00.000Z" }
+```
+
+Meet tự hết hiệu lực sau 3 giờ.
+
+### Google Meet: `POST|PUT|DELETE /groups/:groupId/call/meet`
+
+Chỉ thành viên nhóm.
+
+- `POST`: tạo phòng Meet bằng Google Meet REST API (tài khoản Google cấu hình ở `GOOGLE_MEET_*`, phòng `accessType: OPEN` nên ai có link cũng vào được không cần duyệt). Đã có Meet đang dùng thì trả Meet đó (`created: false`, HTTP 200); tạo mới thì `created: true`, HTTP 201. Response `{ meet, created }`.
+  - 503 `MEET_AUTO_UNAVAILABLE`: chưa cấu hình hoặc Google lỗi; `details.fallback.backupMeetUrl` nếu nhóm có link cố định.
+  - 429 `MEET_RATE_LIMITED`: mỗi nhóm tối đa 1 lần tạo/phút.
+- `PUT { url }`: lưu link do thành viên dán. Chỉ nhận `meet.google.com/abc-defg-hij` (có/không `https`, query bị bỏ); khác → 400 `MEET_INVALID_URL`. Response `{ meet, created }`.
+- `DELETE`: xoá Meet đang dùng, response là `CallStatus` mới.
+
+Khi có Meet mới (người đầu tiên thắng nếu hai người cùng tạo): backend gửi tin nhắn vào chat nhóm `📹 Google Meet cho nhóm: <link>` và phát `call:status` có `meet`.
+
+### Link Meet cố định của nhóm
+
+`Group` có thêm `backupMeetUrl` (string | null). Trưởng nhóm đặt qua `PATCH /groups/:groupId` (field `backupMeetUrl`, chuỗi rỗng để xoá; cùng quy tắc link như trên, sai → 400).
 
 ### Webhook và `call:status`
 
 - LiveKit gửi webhook tới `POST /api/v1/calls/livekit-webhook`. Route đọc **body thô** (gắn trước `express.json()`) để kiểm tra chữ ký trong header `Authorization`; sai/thiếu chữ ký → 401.
 - Với `participant_joined`, `participant_left`, `room_finished` của room `group-…`, backend phát `call:status` (`CallStatus`) cho room socket `group:{groupId}`.
+- Webhook được xác thực bằng key của từng server đã cấu hình (chính và dự phòng).
 - FE: `useGroupCallStatus(groupId)` (`src/hooks/queries/groupCall.js`) lấy `GET` ban đầu, vào room socket của nhóm và cập nhật cache khi nhận `call:status`.
 - Khai báo URL webhook trong cấu hình LiveKit (`livekit.yaml` khi tự host, hoặc mục Webhooks của project LiveKit Cloud). Khi dev ở `localhost`, LiveKit Cloud không gọi tới được; cần tunnel (ví dụ `cloudflared tunnel --url http://localhost:5000`) nếu muốn `call:status` cập nhật tức thì.
 
 ### Ở chế độ mock
 
-`VITE_USE_MOCKS=true` không gọi được video: `GET` trả room rỗng, xin token trả lỗi hướng dẫn đặt `VITE_USE_MOCKS=false`.
+`VITE_USE_MOCKS=true` không gọi được video: `GET` trả room rỗng, xin token và các API Meet trả lỗi hướng dẫn đặt `VITE_USE_MOCKS=false`.
 
 ## Notification types (FE-G6)
 
