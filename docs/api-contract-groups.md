@@ -336,13 +336,14 @@ Xóa thành viên thì các task đang giao cho người đó chuyển về `ass
 
 ## Realtime (Socket.IO) — FE-G5
 
-Một kết nối Socket.IO duy nhất cho cả app (`src/lib/socket.js`), xác thực bằng `auth: { token: <accessToken> }` khi handshake. Event của chat dùng tiền tố `chat:`; tiền tố `call:` để dành cho signaling video call.
+Một kết nối Socket.IO duy nhất cho cả app (`src/lib/socket.js`), xác thực bằng `auth: { token: <accessToken> }` khi handshake. Event của chat dùng tiền tố `chat:`; `call:status` báo ai đang trong cuộc gọi video của nhóm (xem mục Video call bên dưới).
 
 | Hướng | Event | Payload |
 |---|---|---|
 | client → server | `chat:join` | `{ groupId }` (server kiểm tra membership) |
 | client → server | `chat:leave` | `{ groupId }` |
 | server → client | `chat:message` | `Message` (phát cho room `group:{groupId}` sau khi POST message thành công) |
+| server → client | `call:status` | `CallStatus` (phát cho room `group:{groupId}` khi có người vào/rời cuộc gọi) |
 
 Gửi tin vẫn đi qua REST `POST /messages`; socket chỉ dùng để nhận tin mới.
 
@@ -351,10 +352,10 @@ Gửi tin vẫn đi qua REST `POST /messages`; socket chỉ dùng để nhận t
 - Server Socket.IO chạy chung port với REST (`http://localhost:5000`). FE tự lấy origin từ `VITE_API_BASE_URL`, hoặc đặt `VITE_SOCKET_URL` để ghi đè.
 - Thiếu token hoặc token sai → `connect_error` với `message = "unauthorized"`.
 - Khi access token hết hạn, server gửi `auth:expired` rồi ngắt kết nối. `socket.js` tự gọi refresh token qua REST rồi kết nối lại; các room đang tham gia được join lại tự động.
-- Mỗi socket tự vào room riêng `user:{userId}` để server gửi sự kiện tới đúng một người (dùng cho video call).
+- Mỗi socket tự vào room riêng `user:{userId}` để server gửi sự kiện tới đúng một người (ví dụ `notification:new`).
 - Bị xóa khỏi nhóm hoặc nhóm bị xóa → server đẩy socket khỏi room `group:{groupId}`.
 
-### API của `src/lib/socket.js` (cho video call)
+### API của `src/lib/socket.js`
 
 | Hàm | Dùng để |
 |---|---|
@@ -366,7 +367,66 @@ Gửi tin vẫn đi qua REST `POST /messages`; socket chỉ dùng để nhận t
 
 Kết nối do `useRealtimeConnection()` trong `Layout` quản lý (mở khi đăng nhập, đóng khi đăng xuất, tắt ở chế độ mock); component không tự gọi `connectSocket()`.
 
-Video call dùng tiền tố `call:` (ví dụ `call:join`, `call:offer`, `call:answer`, `call:ice-candidate`, `call:leave`). Handler phía server đăng ký giống chat: viết hàm `(io, socket) => { socket.on("call:...", ...) }` trong module của mình và thêm vào mảng handler của `initRealtime(httpServer, [...])` ở `server.js`. Trước khi cho vào room cuộc gọi phải kiểm tra thành viên bằng `getMembershipOrThrow(groupId, socket.data.user.userId)` import từ `src/modules/groups/index.js`.
+## Video call (LiveKit)
+
+Âm thanh và video **không** đi qua Socket.IO. Mỗi nhóm có một room LiveKit tên `group-{groupId}`; backend chỉ cấp token và báo trạng thái. Socket.IO chỉ mang event `call:status`.
+
+| Method | Path | Mô tả |
+|---|---|---|
+| POST | `/groups/:groupId/call/token` | Cấp token để vào cuộc gọi của nhóm |
+| GET | `/groups/:groupId/call` | Ai đang trong cuộc gọi |
+| POST | `/calls/livekit-webhook` | LiveKit gọi vào (server → server, không cần đăng nhập, xác thực bằng chữ ký) |
+
+### `POST /groups/:groupId/call/token`
+
+Chỉ thành viên nhóm. Tạo room nếu chưa có (giới hạn `CALL_MAX_PARTICIPANTS`, mặc định 25).
+
+```json
+{
+  "token": "<JWT của LiveKit>",
+  "url": "wss://rtc.example.com",
+  "roomName": "group-<groupId>",
+  "maxParticipants": 25
+}
+```
+
+- FE kết nối bằng `room.connect(url, token)`. `url` lấy từ đây, không cấu hình ở FE.
+- Token: `identity = userId`, `name = fullName`, `metadata = {"avatarUrl": ...}`, quyền vào đúng room đó, publish/subscribe, hết hạn sau `CALL_TOKEN_TTL` (mặc định 2h).
+- Cùng tài khoản vào từ tab khác → LiveKit ngắt tab cũ (`DisconnectReason.DUPLICATE_IDENTITY`).
+
+| Mã | Khi nào |
+|---|---|
+| 403 | Không phải thành viên nhóm |
+| 404 | Không tìm thấy nhóm |
+| 409 | Phòng gọi đã đủ người (người đang vào lại từ tab khác không bị tính) |
+| 502 | Không kết nối được LiveKit |
+| 503 | Backend chưa cấu hình `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` |
+
+### `GET /groups/:groupId/call` → `CallStatus`
+
+```json
+{
+  "groupId": "<uuid>",
+  "active": true,
+  "count": 2,
+  "participants": [
+    { "userId": "<uuid>", "fullName": "...", "avatarUrl": null, "joinedAt": "2026-11-25T08:00:00.000Z" }
+  ]
+}
+```
+
+Không có ai thì `active: false, count: 0, participants: []`. Người ẩn (load test, ghi hình) và người đã ngắt kết nối không được tính.
+
+### Webhook và `call:status`
+
+- LiveKit gửi webhook tới `POST /api/v1/calls/livekit-webhook`. Route đọc **body thô** (gắn trước `express.json()`) để kiểm tra chữ ký trong header `Authorization`; sai/thiếu chữ ký → 401.
+- Với `participant_joined`, `participant_left`, `room_finished` của room `group-…`, backend phát `call:status` (`CallStatus`) cho room socket `group:{groupId}`.
+- FE: `useGroupCallStatus(groupId)` (`src/hooks/queries/groupCall.js`) lấy `GET` ban đầu, vào room socket của nhóm và cập nhật cache khi nhận `call:status`.
+- Khai báo URL webhook trong cấu hình LiveKit (`livekit.yaml` khi tự host, hoặc mục Webhooks của project LiveKit Cloud). Khi dev ở `localhost`, LiveKit Cloud không gọi tới được; cần tunnel (ví dụ `cloudflared tunnel --url http://localhost:5000`) nếu muốn `call:status` cập nhật tức thì.
+
+### Ở chế độ mock
+
+`VITE_USE_MOCKS=true` không gọi được video: `GET` trả room rỗng, xin token trả lỗi hướng dẫn đặt `VITE_USE_MOCKS=false`.
 
 ## Notification types (FE-G6)
 

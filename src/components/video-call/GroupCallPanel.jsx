@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import {
+  ChevronLeft,
+  ChevronRight,
   Loader2,
   Mic,
   MicOff,
@@ -8,13 +10,18 @@ import {
   Video,
   VideoOff,
   Users,
+  Volume2,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGroupMembers } from "@/hooks/queries/groups";
+import { useGroupCallStatus } from "@/hooks/queries/groupCall";
 import MemberAvatar from "@/components/groups/MemberAvatar";
+import RemoteAudio from "./RemoteAudio";
 import VideoTile from "./VideoTile";
-import { useGroupCall } from "./useGroupCall";
+import { GRID_PAGE_SIZE, STAGE_PAGE_SIZE, useGroupCall } from "./useGroupCall";
+
+const STATUS_REFRESH_DELAY_MS = 1500;
 
 function formatElapsed(startedAt, now) {
   const total = Math.max(0, Math.floor((now - startedAt) / 1000));
@@ -26,18 +33,7 @@ function formatElapsed(startedAt, now) {
   return `${pad(minutes)}:${pad(seconds)}`;
 }
 
-function trackLive(stream, kind) {
-  return Boolean(
-    stream
-      ?.getTracks()
-      .some(
-        (track) =>
-          track.kind === kind && track.readyState === "live" && track.enabled && !track.muted,
-      ),
-  );
-}
-
-function ControlButton({ label, pressed, tone = "default", onClick, children }) {
+function ControlButton({ label, pressed, tone = "default", disabled = false, onClick, children }) {
   return (
     <button
       type="button"
@@ -45,8 +41,9 @@ function ControlButton({ label, pressed, tone = "default", onClick, children }) 
       aria-label={label}
       aria-pressed={pressed}
       title={label}
+      disabled={disabled}
       className={cn(
-        "h-12 w-12 rounded-full inline-flex items-center justify-center text-white transition-colors",
+        "h-12 w-12 rounded-full inline-flex items-center justify-center text-white transition-colors disabled:opacity-50",
         tone === "danger" && "bg-destructive hover:bg-destructive/90",
         tone === "primary" && "bg-primary hover:bg-primary/90",
         tone === "default" && "bg-white/15 hover:bg-white/25",
@@ -57,25 +54,37 @@ function ControlButton({ label, pressed, tone = "default", onClick, children }) 
   );
 }
 
+function MicButton({ call }) {
+  return (
+    <ControlButton
+      label={call.micEnabled ? "Mute microphone" : "Unmute microphone"}
+      pressed={call.micEnabled}
+      tone={call.micEnabled ? "default" : "danger"}
+      onClick={call.toggleMic}
+    >
+      {call.micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+    </ControlButton>
+  );
+}
+
+function CameraButton({ call }) {
+  return (
+    <ControlButton
+      label={call.cameraEnabled ? "Turn camera off" : "Turn camera on"}
+      pressed={call.cameraEnabled}
+      tone={call.cameraEnabled ? "default" : "danger"}
+      onClick={call.toggleCamera}
+    >
+      {call.cameraEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+    </ControlButton>
+  );
+}
+
 function CallControls({ call, onLeave, onTogglePeople, peopleOpen, count }) {
   return (
     <div className="flex items-center justify-center gap-3 px-4 pb-5 pt-2">
-      <ControlButton
-        label={call.micEnabled ? "Mute microphone" : "Unmute microphone"}
-        pressed={call.micEnabled}
-        tone={call.micEnabled ? "default" : "danger"}
-        onClick={call.toggleMic}
-      >
-        {call.micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
-      </ControlButton>
-      <ControlButton
-        label={call.cameraEnabled ? "Turn camera off" : "Turn camera on"}
-        pressed={call.cameraEnabled}
-        tone={call.cameraEnabled ? "default" : "danger"}
-        onClick={call.toggleCamera}
-      >
-        {call.cameraEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
-      </ControlButton>
+      <MicButton call={call} />
+      <CameraButton call={call} />
       <ControlButton
         label={call.sharing ? "Stop sharing" : "Share screen"}
         pressed={call.sharing}
@@ -109,10 +118,23 @@ function CallControls({ call, onLeave, onTogglePeople, peopleOpen, count }) {
   );
 }
 
+function PersonRow({ user, detail, micOn }) {
+  return (
+    <div className="flex items-center gap-3 py-1">
+      <MemberAvatar user={user} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{user.fullName}</p>
+        <p className="truncate text-xs text-white/50">{detail}</p>
+      </div>
+      {!micOn && <MicOff className="h-4 w-4 shrink-0 text-white/50" />}
+    </div>
+  );
+}
+
 function PeoplePanel({ group, call, onClose }) {
   const { members, isLoading } = useGroupMembers(group.id);
   const inCallIds = new Set([call.me.userId, ...call.remotes.map((remote) => remote.userId)]);
-  const waiting = members.filter((member) => !inCallIds.has(member.userId));
+  const waiting = members.filter((member) => !inCallIds.has(String(member.userId)));
 
   return (
     <aside className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-white/10 bg-[hsl(var(--brand-h),28%,10%)] text-white sm:w-[320px]">
@@ -137,8 +159,8 @@ function PeoplePanel({ group, call, onClose }) {
             <PersonRow
               key={remote.userId}
               user={remote.user}
-              detail={remote.connectionState === "connected" ? "Connected" : "Connecting"}
-              micOn={trackLive(remote.stream, "audio")}
+              detail={remote.connectionState === "connected" ? "Connected" : "Reconnecting"}
+              micOn={remote.micOn}
             />
           ))}
         </section>
@@ -161,28 +183,77 @@ function PeoplePanel({ group, call, onClose }) {
   );
 }
 
-function PersonRow({ user, detail, micOn }) {
+function InCallNow({ status }) {
+  if (!status.active) {
+    return <p className="text-sm text-muted-foreground">No one is in the call yet.</p>;
+  }
+  const shown = status.participants.slice(0, 5);
+  const extra = status.count - shown.length;
   return (
-    <div className="flex items-center gap-3 py-1">
-      <MemberAvatar user={user} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{user.fullName}</p>
-        <p className="truncate text-xs text-white/50">{detail}</p>
+    <div className="flex items-center gap-3">
+      <div className="flex -space-x-2">
+        {shown.map((person) => (
+          <MemberAvatar
+            key={person.userId}
+            user={person}
+            size="sm"
+            className="ring-2 ring-background"
+          />
+        ))}
       </div>
-      {!micOn && <MicOff className="h-4 w-4 shrink-0 text-white/50" />}
+      <p className="text-sm text-foreground">
+        {status.count === 1 ? "1 person is" : `${status.count} people are`} in this call
+        {extra > 0 && <span className="text-muted-foreground"> (+{extra} more)</span>}
+      </p>
     </div>
   );
 }
 
 function statusLabel(status) {
-  if (status === "live") return "Connected";
   if (status === "reconnecting") return "Reconnecting";
-  return "Only you";
+  return "Connected";
+}
+
+function Pager({ page, pageCount, onChange }) {
+  if (pageCount <= 1) return null;
+  return (
+    <div className="flex items-center justify-center gap-2 py-2 text-xs text-white/70">
+      <button
+        type="button"
+        onClick={() => onChange(page - 1)}
+        disabled={page === 0}
+        aria-label="Previous page"
+        className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-40"
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+      <span>
+        Page {page + 1} of {pageCount}
+      </span>
+      <button
+        type="button"
+        onClick={() => onChange(page + 1)}
+        disabled={page >= pageCount - 1}
+        aria-label="Next page"
+        className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-40"
+      >
+        <ChevronRight className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+function gridClassFor(count) {
+  if (count <= 1) return "grid-cols-1 max-w-4xl";
+  if (count <= 4) return "grid-cols-1 sm:grid-cols-2";
+  return "grid-cols-2 xl:grid-cols-3";
 }
 
 export default function GroupCallPanel({ group, visible = true, onLiveChange, onLeft }) {
   const call = useGroupCall(group.id, { visible });
+  const { status: callStatus, refresh: refreshCallStatus } = useGroupCallStatus(group.id);
   const [peopleOpen, setPeopleOpen] = useState(false);
+  const [page, setPage] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const inCall = call.phase === "in-call";
 
@@ -190,14 +261,34 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
     onLiveChange?.(inCall);
   }, [inCall, onLiveChange]);
 
+  // The webhook normally updates this; refetch as well in case it is not set up (local dev).
+  useEffect(() => {
+    const timer = setTimeout(refreshCallStatus, STATUS_REFRESH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [inCall, refreshCallStatus]);
+
   useEffect(() => {
     if (!inCall || !call.startedAt) return undefined;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [inCall, call.startedAt]);
 
-  const previewStream = call.sharing && call.screenStream ? call.screenStream : call.localStream;
-  const localVideoOn = call.sharing || (call.cameraEnabled && trackLive(call.localStream, "video"));
+  const localVideoOn = call.cameraEnabled && Boolean(call.localVideoTrack);
+  const shares = [
+    ...(call.localScreenTrack
+      ? [{ id: "local-screen", track: call.localScreenTrack, user: call.me, label: "You" }]
+      : []),
+    ...call.remotes
+      .filter((remote) => remote.screenTrack)
+      .map((remote) => ({
+        id: `${remote.userId}-screen`,
+        track: remote.screenTrack,
+        user: remote.user,
+        label: remote.user.fullName,
+      })),
+  ];
+  const stageVisible = inCall && shares.length > 0;
+  const pageSize = stageVisible ? STAGE_PAGE_SIZE : GRID_PAGE_SIZE;
 
   if (!inCall) {
     return (
@@ -210,40 +301,26 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
 
           <div className="relative w-full">
             <VideoTile
-              stream={previewStream}
+              videoTrack={call.localVideoTrack}
+              videoOn={localVideoOn}
               user={call.me}
               label={call.me.fullName}
-              micOn={call.micEnabled && trackLive(call.localStream, "audio")}
-              videoOn={localVideoOn}
-              silent
-              sharing={call.sharing}
-              mirror={!call.sharing && localVideoOn}
-              fit={call.sharing ? "contain" : "cover"}
+              micOn={call.micEnabled && Boolean(call.localAudioTrack)}
+              levelTrack={call.localAudioTrack?.mediaStreamTrack ?? null}
+              mirror={localVideoOn}
             />
             <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-3 rounded-full bg-black/45 p-2">
-              <ControlButton
-                label={call.micEnabled ? "Mute microphone" : "Unmute microphone"}
-                pressed={call.micEnabled}
-                tone={call.micEnabled ? "default" : "danger"}
-                onClick={call.toggleMic}
-              >
-                {call.micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
-              </ControlButton>
-              <ControlButton
-                label={call.cameraEnabled ? "Turn camera off" : "Turn camera on"}
-                pressed={call.cameraEnabled}
-                tone={call.cameraEnabled ? "default" : "danger"}
-                onClick={call.toggleCamera}
-              >
-                {call.cameraEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
-              </ControlButton>
+              <MicButton call={call} />
+              <CameraButton call={call} />
             </div>
           </div>
+
+          <InCallNow status={callStatus} />
 
           {call.mediaMessage && (
             <div className="flex flex-col items-center gap-2 text-center">
               <p className="text-sm text-destructive">{call.mediaMessage}</p>
-              {!call.localStream && (
+              {!call.localAudioTrack && !call.localVideoTrack && (
                 <button
                   type="button"
                   onClick={call.retryDevices}
@@ -255,6 +332,12 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
             </div>
           )}
 
+          {call.callError && (
+            <p role="alert" className="max-w-md text-center text-sm text-destructive">
+              {call.callError}
+            </p>
+          )}
+
           <button
             type="button"
             onClick={call.join}
@@ -262,13 +345,8 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
             className="inline-flex h-11 items-center gap-2 rounded-full bg-primary px-8 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
           >
             {call.joining && <Loader2 className="h-4 w-4 animate-spin" />}
-            Join call
+            {call.joining ? "Joining…" : "Join call"}
           </button>
-          <p className="max-w-md text-center text-xs text-muted-foreground">
-            {call.socketConnected
-              ? "Members of this group can join from the video button."
-              : "The call server is offline, so other members will not see you yet. You can still check your camera and microphone."}
-          </p>
         </div>
       </div>
     );
@@ -277,44 +355,37 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
   const tiles = [
     {
       id: "local",
-      stream: previewStream,
+      videoTrack: call.localVideoTrack,
+      videoOn: localVideoOn,
       user: call.me,
       label: "You",
-      micOn: call.micEnabled && trackLive(call.localStream, "audio"),
-      videoOn: localVideoOn,
-      silent: true,
-      sharing: call.sharing,
-      mirror: !call.sharing && localVideoOn,
-      fit: call.sharing ? "contain" : "cover",
+      micOn: call.micEnabled && Boolean(call.localAudioTrack),
+      speaking: call.localSpeaking,
+      mirror: localVideoOn,
+      quality: call.localQuality,
     },
     ...call.remotes.map((remote) => ({
       id: remote.userId,
-      stream: remote.stream,
+      videoTrack: remote.cameraTrack,
+      videoOn: Boolean(remote.cameraTrack),
       user: remote.user,
       label: remote.user.fullName,
-      watchRemote: true,
-      silent: false,
-      sharing: false,
-      mirror: false,
-      fit: "cover",
-      status:
-        remote.connectionState === "connected" || remote.connectionState === "new"
-          ? null
-          : "Reconnecting",
+      micOn: remote.micOn,
+      speaking: remote.speaking,
+      quality: remote.quality,
+      status: remote.connectionState === "connected" ? null : "Reconnecting",
     })),
   ];
 
-  const gridClass =
-    tiles.length <= 1
-      ? "grid-cols-1 max-w-4xl"
-      : tiles.length === 2
-        ? "grid-cols-1 sm:grid-cols-2"
-        : tiles.length <= 4
-          ? "grid-cols-1 sm:grid-cols-2"
-          : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3";
+  const pageCount = Math.max(1, Math.ceil(tiles.length / pageSize));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pageTiles = tiles.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+  const count = tiles.length;
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col bg-[hsl(var(--brand-h),30%,8%)] text-white">
+      <RemoteAudio remotes={call.remotes} />
+
       <div className="flex h-12 shrink-0 items-center justify-between gap-3 px-4">
         <p className="truncate text-sm font-medium">{group.name}</p>
         <p className="flex shrink-0 items-center gap-2 text-xs text-white/75">
@@ -326,30 +397,78 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
           />
           {call.startedAt ? formatElapsed(call.startedAt, now) : "00:00"}
           <span>· {statusLabel(call.linkStatus)}</span>
+          <span>
+            · {count}
+            {call.maxParticipants ? `/${call.maxParticipants}` : ""}
+          </span>
         </p>
       </div>
 
-      {call.signalingNote && (
+      {call.audioBlocked && (
+        <button
+          type="button"
+          onClick={call.startAudio}
+          className="mx-4 mb-2 inline-flex items-center justify-center gap-2 rounded-xl bg-primary/90 px-3 py-2 text-xs font-medium text-white hover:bg-primary"
+        >
+          <Volume2 className="h-4 w-4" />
+          Your browser blocked call audio. Click to turn it on.
+        </button>
+      )}
+
+      {call.mediaMessage && (
         <p className="mx-4 mb-2 rounded-xl bg-amber-400/15 px-3 py-2 text-center text-xs text-amber-100">
-          {call.signalingNote}
+          {call.mediaMessage}
         </p>
       )}
 
-      <div
-        className={cn(
-          "flex min-h-0 flex-1 flex-col overflow-y-auto px-3 sm:px-4",
-          tiles.length === 1 && "items-center justify-center",
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 sm:px-4">
+        {stageVisible && (
+          <div
+            className={cn(
+              "mb-3 grid w-full gap-3",
+              shares.length > 1 ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1",
+            )}
+          >
+            {shares.map((share) => (
+              <VideoTile
+                key={share.id}
+                videoTrack={share.track}
+                videoOn
+                user={share.user}
+                label={share.label}
+                micOn
+                speaking={false}
+                sharing
+                fit="contain"
+                className="aspect-auto min-h-[240px] max-h-[60vh] bg-black"
+              />
+            ))}
+          </div>
         )}
-      >
-        <div className={cn("grid w-full gap-3", gridClass)}>
-          {tiles.map((tile) => (
-            <VideoTile key={tile.id} {...tile} />
-          ))}
+
+        <div
+          className={cn(
+            "flex flex-1 flex-col",
+            !stageVisible && pageTiles.length === 1 && "items-center justify-center",
+          )}
+        >
+          <div
+            className={cn(
+              "mx-auto grid w-full gap-3",
+              stageVisible ? "grid-cols-2 sm:grid-cols-4" : gridClassFor(pageTiles.length),
+            )}
+          >
+            {pageTiles.map(({ id, ...tile }) => (
+              <VideoTile key={id} {...tile} />
+            ))}
+          </div>
+          {call.remotes.length === 0 && (
+            <p className="py-4 text-center text-sm text-white/60">Waiting for other members to join</p>
+          )}
         </div>
-        {call.remotes.length === 0 && (
-          <p className="py-4 text-center text-sm text-white/60">Waiting for other members to join</p>
-        )}
       </div>
+
+      <Pager page={currentPage} pageCount={pageCount} onChange={setPage} />
 
       <CallControls
         call={call}
@@ -359,7 +478,7 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
           call.leave();
           onLeft?.();
         }}
-        count={1 + call.remotes.length}
+        count={count}
       />
 
       {peopleOpen && <PeoplePanel group={group} call={call} onClose={() => setPeopleOpen(false)} />}

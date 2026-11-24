@@ -1,16 +1,19 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useGroup } from "@/hooks/queries/groups";
+import { useGroupCallStatus } from "@/hooks/queries/groupCall";
 import ChatHeader from "@/components/groups/chat/ChatHeader";
 import GroupChat from "@/components/groups/chat/GroupChat";
 import ConversationInfoPanel from "@/components/groups/info/ConversationInfoPanel";
-import GroupCallTab from "@/components/groups/detail/GroupCallTab";
 import ResourcesView from "@/components/groups/resources/ResourcesView";
 import ProgressView from "@/components/groups/progress/ProgressView";
 import EditGroupModal from "@/components/groups/EditGroupModal";
 import InviteMembersModal from "@/components/groups/InviteMembersModal";
 import LeaveGroupDialog from "@/components/groups/LeaveGroupDialog";
+
+// The LiveKit client is large, so it only loads when the call view opens.
+const GroupCallTab = lazy(() => import("@/components/groups/detail/GroupCallTab"));
 
 const VIEWS = ["chat", "tasks", "resources", "call"];
 const WIDE_SCREEN_QUERY = "(min-width: 1280px)";
@@ -30,6 +33,7 @@ export default function GroupDetail() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { group, isLoading, error } = useGroup(groupId);
+  const { status: callStatus } = useGroupCallStatus(groupId, { enabled: Boolean(group) });
   const [infoOpen, setInfoOpen] = useState(() => {
     if (typeof window === "undefined") return false;
     if (new URLSearchParams(window.location.search).get("view") === "call") return false;
@@ -77,6 +81,7 @@ export default function GroupDetail() {
           onToggleInfo={() => setInfoOpen((open) => !open)}
           onOpenMembers={() => setInfoOpen(true)}
           onChangeView={changeView}
+          callCount={callStatus.count}
         />
         {callLive && view !== "call" && (
           <button
@@ -97,16 +102,24 @@ export default function GroupDetail() {
             inert={view === "call" ? undefined : true}
             aria-hidden={view !== "call"}
           >
-            <GroupCallTab
-              key={group.id}
-              group={group}
-              visible={view === "call"}
-              onLiveChange={setCallLive}
-              onLeft={() => {
-                setCallLive(false);
-                changeView("chat");
-              }}
-            />
+            <Suspense
+              fallback={
+                <div className="flex flex-1 items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              }
+            >
+              <GroupCallTab
+                key={group.id}
+                group={group}
+                visible={view === "call"}
+                onLiveChange={setCallLive}
+                onLeft={() => {
+                  setCallLive(false);
+                  changeView("chat");
+                }}
+              />
+            </Suspense>
           </div>
         )}
         {view !== "call" && <CenterView view={view} group={group} />}

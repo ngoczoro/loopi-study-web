@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { MicOff, MonitorUp } from "lucide-react";
+import { ConnectionQuality } from "livekit-client";
+import { MicOff, MonitorUp, SignalLow, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import MemberAvatar from "@/components/groups/MemberAvatar";
 
-function useSpeaking(stream, enabled) {
+/**
+ * Voice activity from a raw microphone track. Only used for the lobby preview;
+ * in a call LiveKit reports who is speaking.
+ */
+function useLevelSpeaking(mediaStreamTrack, enabled) {
   const [speaking, setSpeaking] = useState(false);
-  const generation = `${stream?.id ?? ""}:${enabled ? "1" : "0"}`;
+  const generation = `${mediaStreamTrack?.id ?? ""}:${enabled ? "1" : "0"}`;
   const [generationSeen, setGenerationSeen] = useState(generation);
   if (generation !== generationSeen) {
     setGenerationSeen(generation);
@@ -13,17 +18,14 @@ function useSpeaking(stream, enabled) {
   }
 
   useEffect(() => {
-    if (!enabled || !stream) return undefined;
-
-    const audioTracks = stream.getAudioTracks().filter((track) => track.readyState === "live");
-    if (audioTracks.length === 0) return undefined;
+    if (!enabled || !mediaStreamTrack || mediaStreamTrack.readyState !== "live") return undefined;
 
     let context;
     let frame = 0;
     let last = false;
     try {
       context = new AudioContext();
-      const source = context.createMediaStreamSource(new MediaStream(audioTracks));
+      const source = context.createMediaStreamSource(new MediaStream([mediaStreamTrack]));
       const analyser = context.createAnalyser();
       analyser.fftSize = 512;
       source.connect(analyser);
@@ -49,95 +51,78 @@ function useSpeaking(stream, enabled) {
     } catch {
       return undefined;
     }
-  }, [stream, enabled]);
+  }, [mediaStreamTrack, enabled]);
 
   return speaking;
 }
 
-function useRemoteMedia(stream, active) {
-  const [media, setMedia] = useState({ videoOn: false, audioOn: false });
-  const generation = active && stream ? stream.id : "";
-  const [generationSeen, setGenerationSeen] = useState(generation);
-  if (generation !== generationSeen) {
-    setGenerationSeen(generation);
-    setMedia({ videoOn: false, audioOn: false });
+function QualityBadge({ quality }) {
+  if (quality === ConnectionQuality.Poor) {
+    return (
+      <span
+        title="Weak connection"
+        className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-1 text-[11px] text-amber-300"
+      >
+        <SignalLow className="h-3.5 w-3.5" />
+        Weak
+      </span>
+    );
   }
-
-  useEffect(() => {
-    if (!active || !stream) return undefined;
-
-    let trackCleanups = [];
-    const publish = () => {
-      const live = (kind) =>
-        stream
-          .getTracks()
-          .some((track) => track.kind === kind && track.readyState === "live" && !track.muted);
-      setMedia({ videoOn: live("video"), audioOn: live("audio") });
-    };
-    const bind = () => {
-      trackCleanups.forEach((cleanup) => cleanup());
-      trackCleanups = [];
-      stream.getTracks().forEach((track) => {
-        track.addEventListener("mute", publish);
-        track.addEventListener("unmute", publish);
-        track.addEventListener("ended", publish);
-        trackCleanups.push(() => {
-          track.removeEventListener("mute", publish);
-          track.removeEventListener("unmute", publish);
-          track.removeEventListener("ended", publish);
-        });
-      });
-      publish();
-    };
-
-    bind();
-    stream.addEventListener("addtrack", bind);
-    stream.addEventListener("removetrack", bind);
-    return () => {
-      stream.removeEventListener("addtrack", bind);
-      stream.removeEventListener("removetrack", bind);
-      trackCleanups.forEach((cleanup) => cleanup());
-    };
-  }, [stream, active]);
-
-  if (!active || !stream) return { videoOn: false, audioOn: false };
-  return media;
+  if (quality === ConnectionQuality.Lost) {
+    return (
+      <span
+        title="Connection lost"
+        className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-1 text-[11px] text-red-300"
+      >
+        <WifiOff className="h-3.5 w-3.5" />
+        Lost
+      </span>
+    );
+  }
+  return null;
 }
 
+/**
+ * One person (or one shared screen) in the call.
+ *
+ * `videoTrack` is a LiveKit track and is shown with `track.attach()`, which lets adaptive
+ * stream size the incoming video to this tile and pause it when the tile is not visible.
+ * Audio is not played here; RemoteAudio plays every remote microphone.
+ */
 export default function VideoTile({
-  stream,
+  videoTrack = null,
+  videoOn = false,
   user,
   label,
   micOn = false,
-  videoOn = false,
-  watchRemote = false,
-  silent = false,
+  speaking,
+  levelTrack = null,
   sharing = false,
   mirror = false,
   fit = "cover",
   status,
+  quality,
   className,
 }) {
   const videoRef = useRef(null);
-  const remote = useRemoteMedia(stream, watchRemote);
-  const showVideo = watchRemote ? remote.videoOn : videoOn;
-  const hearMic = watchRemote ? remote.audioOn : micOn;
-  const speaking = useSpeaking(stream, hearMic);
+  const levelSpeaking = useLevelSpeaking(levelTrack, speaking === undefined && micOn);
+  const isSpeaking = micOn && (speaking ?? levelSpeaking);
+  const showVideo = Boolean(videoTrack) && videoOn;
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return undefined;
-    video.srcObject = stream ?? null;
+    const element = videoRef.current;
+    if (!element || !videoTrack) return undefined;
+    videoTrack.attach(element);
     return () => {
-      video.srcObject = null;
+      videoTrack.detach(element);
     };
-  }, [stream]);
+  }, [videoTrack]);
 
   return (
     <div
       className={cn(
         "relative aspect-video overflow-hidden rounded-2xl bg-[hsl(var(--brand-h),24%,14%)]",
-        speaking && "ring-2 ring-emerald-400",
+        isSpeaking && "ring-2 ring-emerald-400",
         className,
       )}
     >
@@ -145,7 +130,7 @@ export default function VideoTile({
         ref={videoRef}
         autoPlay
         playsInline
-        muted={silent}
+        muted
         className={cn(
           "absolute inset-0 h-full w-full",
           fit === "contain" ? "object-contain" : "object-cover",
@@ -166,8 +151,10 @@ export default function VideoTile({
         </p>
       )}
 
+      <QualityBadge quality={quality} />
+
       <div className="absolute bottom-3 left-3 flex max-w-[calc(100%-1.5rem)] items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-xs text-white">
-        {!hearMic && <MicOff className="h-3.5 w-3.5 shrink-0" />}
+        {!micOn && !sharing && <MicOff className="h-3.5 w-3.5 shrink-0" />}
         <span className="truncate">{label}</span>
         {sharing && (
           <span className="inline-flex shrink-0 items-center gap-1 text-white/80">

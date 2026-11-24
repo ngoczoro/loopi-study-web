@@ -42,8 +42,13 @@ export default function ChatHeader({
   onToggleInfo,
   onOpenMembers,
   onChangeView,
+  callCount = 0,
 }) {
   const toggleView = (target) => onChangeView(view === target ? "chat" : target);
+  const callLabel =
+    callCount > 0
+      ? `Video call · ${callCount} ${callCount === 1 ? "person" : "people"} in the call`
+      : "Video call";
 
   return (
     <header className="h-16 shrink-0 border-b border-border bg-card flex items-center gap-3 px-3 sm:px-4">
@@ -87,8 +92,15 @@ export default function ChatHeader({
       </div>
 
       <div className="flex items-center gap-0.5">
-        <HeaderButton label="Video call" active={view === "call"} onClick={() => onChangeView("call")}>
-          <Video className="h-[18px] w-[18px]" />
+        <HeaderButton label={callLabel} active={view === "call"} onClick={() => onChangeView("call")}>
+          <span className="relative inline-flex">
+            <Video className="h-[18px] w-[18px]" />
+            {callCount > 0 && (
+              <span className="absolute -right-2 -top-2 min-w-4 rounded-full bg-emerald-500 px-1 text-[10px] font-semibold leading-4 text-white">
+                {callCount}
+              </span>
+            )}
+          </span>
         </HeaderButton>
         <HeaderButton
           label="Reminders & deadlines"
