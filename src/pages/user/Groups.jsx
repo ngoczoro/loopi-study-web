@@ -201,6 +201,15 @@ export default function Groups() {
                   {group.isMuted && (
                     <BellOff className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   )}
+                  {group.callActive && (
+                    <span
+                      title="A group call is in progress"
+                      className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400 shrink-0"
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      In call
+                    </span>
+                  )}
                   {group.lastMessage && (
                     <span className="ml-auto text-[11px] text-muted-foreground shrink-0">
                       {formatSharedDate(group.lastMessage.createdAt) === "Today"

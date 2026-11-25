@@ -72,6 +72,7 @@ Hợp đồng giữa FE và BE cho module Study Group + Chat. FE dựng UI theo 
   "unreadCount": 2,
   "isPinned": false,
   "isMuted": false,
+  "callActive": false,
   "createdAt": "...",
   "updatedAt": "..."
 }
@@ -82,6 +83,7 @@ Hợp đồng giữa FE và BE cho module Study Group + Chat. FE dựng UI theo 
 - `lastMessage`: tin mới nhất mà người gọi còn thấy (sau khi xóa lịch sử thì tính từ `clearedAt`), `null` nếu không có.
 - `unreadCount`: số tin của **người khác** gửi sau `lastReadAt` của người gọi. `lastReadAt` lưu trên bản ghi thành viên, lúc tạo/tham gia nhóm bằng `joinedAt`; gửi tin cũng cập nhật `lastReadAt` của người gửi.
 - `isPinned`, `isMuted`: cài đặt **riêng của người gọi** (lưu trên bản ghi thành viên). `isMuted = true` thì server không tạo notification tin nhắn mới cho người đó (notification task vẫn gửi).
+- `callActive`: nhóm đang có cuộc gọi Loopi (xem "Báo cuộc gọi bắt đầu / kết thúc").
 - `progress.goalPercent`: trung bình `percentComplete` các goal của nhóm, `null` nếu nhóm chưa có goal.
 - `progress.isBehind`: `true` nếu có goal đang chậm hoặc có task quá hạn.
 
@@ -344,6 +346,8 @@ Một kết nối Socket.IO duy nhất cho cả app (`src/lib/socket.js`), xác 
 | client → server | `chat:leave` | `{ groupId }` |
 | server → client | `chat:message` | `Message` (phát cho room `group:{groupId}` sau khi POST message thành công) |
 | server → client | `call:status` | `CallStatus` (phát cho room `group:{groupId}` khi có người vào/rời cuộc gọi) |
+| server → client | `call:started` | `{ groupId, groupName, startedBy: UserSummary \| null, startedAt, notify }` (phát cho room `user:{userId}` của từng thành viên khi cuộc gọi nhóm bắt đầu) |
+| server → client | `call:ended` | `{ groupId, endedAt, durationMs, notify: false }` (phát cho từng thành viên khi cuộc gọi kết thúc) |
 
 Gửi tin vẫn đi qua REST `POST /messages`; socket chỉ dùng để nhận tin mới.
 
@@ -473,6 +477,15 @@ Khi có Meet mới (người đầu tiên thắng nếu hai người cùng tạo
 - Webhook được xác thực bằng key của từng server đã cấu hình (chính và dự phòng).
 - FE: `useGroupCallStatus(groupId)` (`src/hooks/queries/groupCall.js`) lấy `GET` ban đầu, vào room socket của nhóm và cập nhật cache khi nhận `call:status`.
 - Khai báo URL webhook trong cấu hình LiveKit (`livekit.yaml` khi tự host, hoặc mục Webhooks của project LiveKit Cloud). Khi dev ở `localhost`, LiveKit Cloud không gọi tới được; cần tunnel (ví dụ `cloudflared tunnel --url http://localhost:5000`) nếu muốn `call:status` cập nhật tức thì.
+
+### Báo cuộc gọi bắt đầu / kết thúc
+
+- **Bắt đầu** = người đầu tiên vào phòng trống. Backend ghi `study_groups.call_started_at/by` (chỉ một lần nhờ update có điều kiện), gửi tin nhắn chat `📹 Started a group call. Join from the video call button.` dưới tên người đó, và phát `call:started` cho từng thành viên.
+- `notify` = `false` với người bắt đầu và với thành viên đã tắt thông báo nhóm (`isMuted`); FE vẫn cập nhật chấm xanh nhưng không hiện toast.
+- **Kết thúc** = phòng trống liên tục ≥ 40 giây (để rớt mạng rồi vào lại không bị tính là kết thúc). Backend gửi `📹 Call ended · 23 min` (thời lượng tính đến lúc phòng bắt đầu trống) và phát `call:ended`.
+- Cách backend phát hiện (không cần webhook): kiểm tra lại 6 giây sau khi cấp token cho phòng trống; webhook `participant_joined` nếu có; và vòng quét mỗi 20 giây (`calls.sessions.js`) so sánh room trên LiveKit với DB. Không kết thúc cuộc gọi khi có server LiveKit không trả lời. Tắt bằng `CALL_SESSIONS_ENABLED=false`.
+- `Group.callActive` (boolean): nhóm đang có cuộc gọi Loopi, dùng cho chấm xanh "In call" ở danh sách nhóm.
+- FE: `useGroupCallAlerts()` (`src/hooks/useGroupCallAlerts.js`, gắn trong `Layout`) hiện toast "X started a call · in <nhóm>" có nút **Join** (tự ẩn sau 10 giây, không có âm thanh; không hiện nếu đang mở chính trang nhóm đó), cập nhật `callActive` trong cache và tải lại `CallStatus` của nhóm.
 
 ### Ở chế độ mock
 

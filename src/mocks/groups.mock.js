@@ -573,6 +573,7 @@ function toGroupView(d, group, meId) {
     avatarUrl: group.avatarUrl ?? null,
     inviteCode: group.inviteCode,
     backupMeetUrl: group.backupMeetUrl ?? null,
+    callActive: false,
     owner: mockUserSummary(d, group.ownerId),
     myRole: membership?.role ?? null,
     memberCount: d.members.filter((m) => m.groupId === group.id).length,

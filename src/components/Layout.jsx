@@ -4,9 +4,11 @@ import { TopBar } from "@/components/TopBar";
 import { FilePreviewModal } from "@/components/FilePreviewModal";
 import FloatingAssistantButton from "@/components/assistant/FloatingAssistantButton";
 import { useRealtimeConnection } from "@/hooks/useSocket";
+import { useGroupCallAlerts } from "@/hooks/useGroupCallAlerts";
 
 export function Layout({ children }) {
   useRealtimeConnection();
+  useGroupCallAlerts();
 
   return (
     <SidebarProvider>
