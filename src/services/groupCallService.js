@@ -15,6 +15,17 @@ export const requestCallToken = (groupId) =>
     fallback: "Could not start the call",
   });
 
+/**
+ * Tells the backend the user pressed Leave, so the call ends right away when they were
+ * the last one in (otherwise it waits ~40 s in case of a dropped connection): `{ ended }`.
+ */
+export const notifyCallLeft = (groupId) =>
+  callService({
+    mock: () => ({ ended: false }),
+    request: () => api.post(`/groups/${groupId}/call/leave`),
+    fallback: "Could not leave the call",
+  });
+
 /** Who is in the group's call right now: `{ groupId, active, count, participants, meet }`. */
 export const fetchCallStatus = (groupId) =>
   callService({

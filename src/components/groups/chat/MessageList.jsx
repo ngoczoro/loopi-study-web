@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowDown, Loader2, MessageCircle } from "lucide-react";
+import { findLiveCallStartId } from "./callMessages";
 import { formatDayLabel, isSameDay } from "./chatFormat";
 import MessageItem from "./MessageItem";
 
@@ -26,8 +27,11 @@ export default function MessageList({
   onOpenImage,
   onRetrySend,
   onDiscard,
+  groupId,
+  callActive = false,
 }) {
   const scrollRef = useRef(null);
+  const liveCallStartId = findLiveCallStartId(messages, callActive);
   const nearBottomRef = useRef(true);
   const olderAnchorRef = useRef(null);
   const lastMessageIdRef = useRef(null);
@@ -160,6 +164,8 @@ export default function MessageList({
                   onOpenImage={onOpenImage}
                   onRetry={onRetrySend}
                   onDiscard={onDiscard}
+                  groupId={groupId}
+                  liveCall={message.id === liveCallStartId}
                 />
               </Fragment>
             );

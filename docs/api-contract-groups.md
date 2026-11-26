@@ -208,6 +208,8 @@ Hợp đồng giữa FE và BE cho module Study Group + Chat. FE dựng UI theo 
   "groupId": "uuid",
   "sender": { "userId": "uuid", "fullName": "...", "avatarUrl": null },
   "content": "Hello team! https://docs.google.com/...",
+  "kind": "text",
+  "metadata": null,
   "attachments": [
     {
       "id": "uuid",
@@ -222,8 +224,17 @@ Hợp đồng giữa FE và BE cho module Study Group + Chat. FE dựng UI theo 
 }
 ```
 
-- `kind`: `image` (mimeType `image/*`) | `file` (còn lại).
+- `attachments[].kind`: `image` (mimeType `image/*`) | `file` (còn lại).
 - `content` có thể rỗng nếu tin chỉ gồm đính kèm. Link trong `content` do FE tự nhận diện để hiển thị preview.
+- `kind` của tin nhắn: `text` (thành viên viết) hoặc tin do hệ thống cuộc gọi gửi, FE hiện thành thẻ cuộc gọi (`CallMessageCard`):
+
+  | `kind` | `content` | `metadata` |
+  |---|---|---|
+  | `call_started` | `Started a group call` | `{ startedAt }` |
+  | `call_ended` | `Call ended · 23 min` | `{ startedAt, durationMs }` |
+  | `meet` | `Google Meet: <link>` | `{ url }` |
+
+  API gửi tin nhắn không nhận `kind`; chỉ backend tạo các tin này (`postCallMessage`). `content` vẫn có chữ để danh sách nhóm hiện tin cuối.
 
 ### SharedItem (kho Ảnh/Video, File, Link của nhóm)
 
@@ -464,7 +475,7 @@ Chỉ thành viên nhóm.
 - `PUT { url }`: lưu link do thành viên dán. Chỉ nhận `meet.google.com/abc-defg-hij` (có/không `https`, query bị bỏ); khác → 400 `MEET_INVALID_URL`. Response `{ meet, created }`.
 - `DELETE`: xoá Meet đang dùng, response là `CallStatus` mới.
 
-Khi có Meet mới (người đầu tiên thắng nếu hai người cùng tạo): backend gửi tin nhắn vào chat nhóm `📹 Google Meet cho nhóm: <link>` và phát `call:status` có `meet`.
+Khi có Meet mới (người đầu tiên thắng nếu hai người cùng tạo): backend gửi tin nhắn `kind: "meet"` vào chat nhóm và phát `call:status` có `meet`.
 
 ### Link Meet cố định của nhóm
 
@@ -480,12 +491,15 @@ Khi có Meet mới (người đầu tiên thắng nếu hai người cùng tạo
 
 ### Báo cuộc gọi bắt đầu / kết thúc
 
-- **Bắt đầu** = người đầu tiên vào phòng trống. Backend ghi `study_groups.call_started_at/by` (chỉ một lần nhờ update có điều kiện), gửi tin nhắn chat `📹 Started a group call. Join from the video call button.` dưới tên người đó, và phát `call:started` cho từng thành viên.
-- `notify` = `false` với người bắt đầu và với thành viên đã tắt thông báo nhóm (`isMuted`); FE vẫn cập nhật chấm xanh nhưng không hiện toast.
-- **Kết thúc** = phòng trống liên tục ≥ 40 giây (để rớt mạng rồi vào lại không bị tính là kết thúc). Backend gửi `📹 Call ended · 23 min` (thời lượng tính đến lúc phòng bắt đầu trống) và phát `call:ended`.
+- **Bắt đầu** = người đầu tiên vào phòng trống. Backend ghi `study_groups.call_started_at/by` (chỉ một lần nhờ update có điều kiện), gửi tin nhắn `kind: "call_started"` dưới tên người đó, lưu notification `group_call_started` (`metadata: { groupId, groupName, startedAt }`) cho người được báo, rồi phát `call:started` cho từng thành viên.
+- `notify` = `false` với người bắt đầu và với thành viên đã tắt thông báo nhóm (`isMuted`); FE vẫn cập nhật chấm xanh nhưng không hiện toast, và những người này không có notification.
+- **Kết thúc ngay** khi người cuối cùng bấm Leave: FE gọi `POST /groups/:groupId/call/leave` → `{ ended }`; backend hỏi mọi server LiveKit, không tính người vừa rời, phòng trống thì kết thúc luôn (nếu có server không trả lời thì để vòng quét xử lý).
+- **Kết thúc khi rớt mạng** = phòng trống liên tục ≥ 40 giây (để rớt mạng rồi vào lại không bị tính là kết thúc). Backend gửi tin nhắn `kind: "call_ended"` (thời lượng tính đến lúc phòng bắt đầu trống), thêm `metadata.endedAt` và đuôi ` · Call ended` vào các notification của cuộc gọi, rồi phát `call:ended`.
 - Cách backend phát hiện (không cần webhook): kiểm tra lại 6 giây sau khi cấp token cho phòng trống; webhook `participant_joined` nếu có; và vòng quét mỗi 20 giây (`calls.sessions.js`) so sánh room trên LiveKit với DB. Không kết thúc cuộc gọi khi có server LiveKit không trả lời. Tắt bằng `CALL_SESSIONS_ENABLED=false`.
 - `Group.callActive` (boolean): nhóm đang có cuộc gọi Loopi, dùng cho chấm xanh "In call" ở danh sách nhóm.
-- FE: `useGroupCallAlerts()` (`src/hooks/useGroupCallAlerts.js`, gắn trong `Layout`) hiện toast "X started a call · in <nhóm>" có nút **Join** (tự ẩn sau 10 giây, không có âm thanh; không hiện nếu đang mở chính trang nhóm đó), cập nhật `callActive` trong cache và tải lại `CallStatus` của nhóm.
+- FE: `useGroupCallAlerts()` (`src/hooks/useGroupCallAlerts.js`, gắn trong `Layout`) hiện toast "X started a call · in <nhóm>" có nút **Join** (tự ẩn sau 10 giây, không có âm thanh; không hiện nếu đang mở chính trang nhóm đó), cập nhật `callActive` trong cache, tải lại `CallStatus` của nhóm và danh sách notification. Khi tab Loopi không được mở trước mặt, hiện thêm thông báo của hệ điều hành (`src/lib/browserNotifications.js`; quyền được hỏi một lần khi bấm Join call).
+- Bấm notification `group_call_started`: mở tab Call của nhóm, hoặc chat nhóm nếu cuộc gọi đã kết thúc (`metadata.endedAt`).
+- Cuộc gọi nằm trong `GroupCallProvider` (gắn trong `Layout`), nên sang trang khác vẫn giữ cuộc gọi và hiện cửa sổ mini (`MiniCallWindow`).
 
 ### Ở chế độ mock
 

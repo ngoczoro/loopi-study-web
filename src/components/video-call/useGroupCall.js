@@ -11,7 +11,7 @@ import {
   createLocalVideoTrack,
 } from "livekit-client";
 import { getAuthUser } from "@/lib/authSession";
-import { requestCallToken } from "@/services/groupCallService";
+import { notifyCallLeft, requestCallToken } from "@/services/groupCallService";
 
 /**
  * Group video call on LiveKit (SFU).
@@ -445,6 +445,8 @@ export function useGroupCall(groupId, { visible = true } = {}) {
     room?.disconnect();
     stopLocalTracks();
     resetToLobby(null);
+    // Last one out ends the call now. Best effort: the backend's sweep ends it anyway.
+    if (room) notifyCallLeft(groupIdRef.current).catch(() => {});
   };
 
   const retryDevices = async () => {

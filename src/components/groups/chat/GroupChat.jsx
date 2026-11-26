@@ -11,7 +11,7 @@ import ImageLightbox from "./ImageLightbox";
 import MessageComposer from "./MessageComposer";
 import MessageList from "./MessageList";
 
-export default function GroupChat({ group }) {
+export default function GroupChat({ group, callActive = false }) {
   const myUserId = getAuthUser()?.id ?? null;
   const {
     messages,
@@ -115,6 +115,8 @@ export default function GroupChat({ group }) {
         onOpenImage={setLightboxImage}
         onRetrySend={deliver}
         onDiscard={discard}
+        groupId={group.id}
+        callActive={callActive}
       />
 
       <MessageComposer

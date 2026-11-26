@@ -7,6 +7,7 @@ import {
   CalendarClock,
   ClipboardList,
   Clock,
+  Phone,
   ShieldAlert,
   Target,
 } from "lucide-react";
@@ -23,6 +24,7 @@ const TYPE_ICONS = {
   group_task_due_soon: CalendarClock,
   group_task_overdue: AlarmClock,
   group_task_blocked: Ban,
+  group_call_started: Phone,
 };
 
 export function getNotificationIcon(type) {
@@ -37,6 +39,10 @@ export function getNotificationLink(notification) {
   const groupId = notification?.metadata?.groupId;
   if (isGroupTaskNotification(notification) && groupId) {
     return `/groups/${groupId}?view=tasks`;
+  }
+  if (notification?.type === "group_call_started" && groupId) {
+    // Once the call is over, open the group's chat instead of an empty call.
+    return notification.metadata.endedAt ? `/groups/${groupId}` : `/groups/${groupId}?view=call`;
   }
   return null;
 }

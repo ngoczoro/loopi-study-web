@@ -1,12 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
   Loader2,
+  Maximize,
   Mic,
   MicOff,
+  Minimize,
   MonitorUp,
+  PanelRightClose,
+  PanelRightOpen,
   PhoneOff,
   Video,
   VideoOff,
@@ -15,13 +20,14 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { askNotificationPermission } from "@/lib/browserNotifications";
 import { useGroupMembers } from "@/hooks/queries/groups";
 import { useGroupCallStatus } from "@/hooks/queries/groupCall";
 import MemberAvatar from "@/components/groups/MemberAvatar";
+import { useGroupCallSession } from "./groupCallContext";
 import MeetFallback from "./MeetFallback";
-import RemoteAudio from "./RemoteAudio";
 import VideoTile from "./VideoTile";
-import { GRID_PAGE_SIZE, STAGE_PAGE_SIZE, useGroupCall } from "./useGroupCall";
+import { GRID_PAGE_SIZE } from "./useGroupCall";
 
 const STATUS_REFRESH_DELAY_MS = 1500;
 
@@ -253,24 +259,172 @@ function Pager({ page, pageCount, onChange }) {
   );
 }
 
+function StageButton({ label, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white hover:bg-black/75"
+    >
+      {children}
+    </button>
+  );
+}
+
+function useFullscreen(ref) {
+  const [active, setActive] = useState(false);
+  const supported = typeof document !== "undefined" && Boolean(document.fullscreenEnabled);
+
+  useEffect(() => {
+    if (!supported) return undefined;
+    const update = () => setActive(Boolean(ref.current) && document.fullscreenElement === ref.current);
+    document.addEventListener("fullscreenchange", update);
+    return () => document.removeEventListener("fullscreenchange", update);
+  }, [ref, supported]);
+
+  const toggle = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.().catch(() => {});
+    } else {
+      ref.current?.requestFullscreen?.().catch(() => {});
+    }
+  };
+
+  return { supported, active, toggle };
+}
+
+/**
+ * Someone presenting, or a tile the user enlarged, fills the main area; everyone else
+ * moves to a strip beside it (below it on small screens), which can be hidden.
+ */
+function Stage({ featured, others, onToggleExpand }) {
+  const stageRef = useRef(null);
+  const fullscreen = useFullscreen(stageRef);
+  const [stripHidden, setStripHidden] = useState(false);
+  const { id: featuredId, ...featuredTile } = featured;
+  const showStrip = !stripHidden && others.length > 0;
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3 px-3 pb-1 sm:px-4 lg:flex-row">
+      <div
+        ref={stageRef}
+        className="relative flex min-h-[200px] flex-1 overflow-hidden rounded-2xl bg-black"
+      >
+        <VideoTile
+          key={featuredId}
+          {...featuredTile}
+          fit="contain"
+          expanded
+          onToggleExpand={() => onToggleExpand(featuredId)}
+          className="aspect-auto h-full w-full rounded-none bg-black"
+        />
+        <div className="absolute bottom-3 right-3 flex gap-2">
+          {others.length > 0 && (
+            <StageButton
+              label={stripHidden ? "Show everyone" : "Hide everyone else"}
+              onClick={() => setStripHidden((hidden) => !hidden)}
+            >
+              {stripHidden ? (
+                <PanelRightOpen className="h-4 w-4" />
+              ) : (
+                <PanelRightClose className="h-4 w-4" />
+              )}
+            </StageButton>
+          )}
+          {fullscreen.supported && (
+            <StageButton
+              label={fullscreen.active ? "Exit full screen" : "Full screen"}
+              onClick={fullscreen.toggle}
+            >
+              {fullscreen.active ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+            </StageButton>
+          )}
+        </div>
+      </div>
+
+      {showStrip && (
+        <div className="flex shrink-0 gap-2 overflow-x-auto pb-1 lg:w-56 lg:flex-col lg:overflow-y-auto lg:overflow-x-hidden lg:pb-0 xl:w-64">
+          {others.map(({ id, ...tile }) => (
+            <VideoTile
+              key={id}
+              {...tile}
+              compact
+              onToggleExpand={() => onToggleExpand(id)}
+              className="w-36 shrink-0 sm:w-44 lg:w-full"
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function gridClassFor(count) {
   if (count <= 1) return "grid-cols-1 max-w-4xl";
   if (count <= 4) return "grid-cols-1 sm:grid-cols-2";
   return "grid-cols-2 xl:grid-cols-3";
 }
 
-export default function GroupCallPanel({ group, visible = true, onLiveChange, onLeft }) {
-  const call = useGroupCall(group.id, { visible });
+function OtherCallNotice({ group, otherCall, onSwitch }) {
+  const navigate = useNavigate();
+  return (
+    <div className="flex flex-1 items-center justify-center bg-background px-4 py-8">
+      <div className="w-full max-w-md space-y-4 rounded-2xl border border-border bg-card p-6 text-center">
+        <h2 className="text-base font-semibold text-foreground">You&apos;re in another call</h2>
+        <p className="text-sm text-muted-foreground">
+          You are in the call of <span className="font-medium text-foreground">{otherCall.groupName}</span>.
+          Leave it to join the call of {group.name}?
+        </p>
+        <div className="flex flex-wrap justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate(`/groups/${otherCall.groupId}?view=call`)}
+            className="h-10 rounded-full border border-border px-5 text-sm font-medium text-foreground hover:bg-secondary"
+          >
+            Back to that call
+          </button>
+          <button
+            type="button"
+            onClick={onSwitch}
+            className="h-10 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+          >
+            Leave it and come here
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The group's full call view. The call itself lives in GroupCallProvider, so leaving
+ * this view (another tab or page) keeps it running in the mini call window.
+ */
+export default function GroupCallPanel({ group, visible = true, onLeft }) {
+  const { call, otherCall, switchHere } = useGroupCallSession(group, visible);
+
+  if (otherCall) return <OtherCallNotice group={group} otherCall={otherCall} onSwitch={switchHere} />;
+  if (!call) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  return <CallView group={group} call={call} onLeft={onLeft} />;
+}
+
+function CallView({ group, call, onLeft }) {
   const { status: callStatus, refresh: refreshCallStatus } = useGroupCallStatus(group.id);
   const [peopleOpen, setPeopleOpen] = useState(false);
   const [moveToMeetOpen, setMoveToMeetOpen] = useState(false);
   const [page, setPage] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  const [focusId, setFocusId] = useState(null);
+  const [dismissedShares, setDismissedShares] = useState(null);
   const inCall = call.phase === "in-call";
-
-  useEffect(() => {
-    onLiveChange?.(inCall);
-  }, [inCall, onLiveChange]);
 
   // The webhook normally updates this; refetch as well in case it is not set up (local dev).
   useEffect(() => {
@@ -298,9 +452,6 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
         label: remote.user.fullName,
       })),
   ];
-  const stageVisible = inCall && shares.length > 0;
-  const pageSize = stageVisible ? STAGE_PAGE_SIZE : GRID_PAGE_SIZE;
-
   if (!inCall) {
     return (
       <div className="flex-1 min-h-0 overflow-y-auto bg-background">
@@ -364,7 +515,10 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
 
           <button
             type="button"
-            onClick={call.join}
+            onClick={() => {
+              askNotificationPermission().catch(() => {});
+              call.join();
+            }}
             disabled={call.joining}
             className="inline-flex h-11 items-center gap-2 rounded-full bg-primary px-8 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
           >
@@ -376,7 +530,18 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
     );
   }
 
-  const tiles = [
+  const shareTiles = shares.map((share) => ({
+    id: share.id,
+    videoTrack: share.track,
+    videoOn: true,
+    user: share.user,
+    label: share.label,
+    micOn: true,
+    speaking: false,
+    sharing: true,
+    fit: "contain",
+  }));
+  const personTiles = [
     {
       id: "local",
       videoTrack: call.localVideoTrack,
@@ -401,14 +566,29 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
     })),
   ];
 
-  const pageCount = Math.max(1, Math.ceil(tiles.length / pageSize));
+  const tiles = [...shareTiles, ...personTiles];
+  const count = personTiles.length;
+
+  // A new presentation goes on the stage unless the user shrank this same set of shares.
+  const sharesKey = shareTiles.map((tile) => tile.id).join(",");
+  const focused = focusId ? (tiles.find((tile) => tile.id === focusId) ?? null) : null;
+  const featured =
+    focused ?? (shareTiles.length > 0 && sharesKey !== dismissedShares ? shareTiles[0] : null);
+  const toggleExpand = (id) => {
+    if (featured?.id === id) {
+      setFocusId(null);
+      if (featured.sharing) setDismissedShares(sharesKey);
+      return;
+    }
+    setFocusId(id);
+  };
+
+  const pageCount = Math.max(1, Math.ceil(tiles.length / GRID_PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
-  const pageTiles = tiles.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
-  const count = tiles.length;
+  const pageTiles = tiles.slice(currentPage * GRID_PAGE_SIZE, (currentPage + 1) * GRID_PAGE_SIZE);
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col bg-[hsl(var(--brand-h),30%,8%)] text-white">
-      <RemoteAudio remotes={call.remotes} />
 
       <div className="flex h-12 shrink-0 items-center justify-between gap-3 px-4">
         <p className="truncate text-sm font-medium">{group.name}</p>
@@ -463,54 +643,36 @@ export default function GroupCallPanel({ group, visible = true, onLiveChange, on
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 sm:px-4">
-        {stageVisible && (
-          <div
-            className={cn(
-              "mb-3 grid w-full gap-3",
-              shares.length > 1 ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1",
-            )}
-          >
-            {shares.map((share) => (
-              <VideoTile
-                key={share.id}
-                videoTrack={share.track}
-                videoOn
-                user={share.user}
-                label={share.label}
-                micOn
-                speaking={false}
-                sharing
-                fit="contain"
-                className="aspect-auto min-h-[240px] max-h-[60vh] bg-black"
-              />
-            ))}
+      {featured ? (
+        <Stage
+          featured={featured}
+          others={tiles.filter((tile) => tile.id !== featured.id)}
+          onToggleExpand={toggleExpand}
+        />
+      ) : (
+        <>
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 sm:px-4">
+            <div
+              className={cn(
+                "flex flex-1 flex-col",
+                pageTiles.length === 1 && "items-center justify-center",
+              )}
+            >
+              <div className={cn("mx-auto grid w-full gap-3", gridClassFor(pageTiles.length))}>
+                {pageTiles.map(({ id, ...tile }) => (
+                  <VideoTile key={id} {...tile} onToggleExpand={() => toggleExpand(id)} />
+                ))}
+              </div>
+              {call.remotes.length === 0 && (
+                <p className="py-4 text-center text-sm text-white/60">
+                  Waiting for other members to join
+                </p>
+              )}
+            </div>
           </div>
-        )}
-
-        <div
-          className={cn(
-            "flex flex-1 flex-col",
-            !stageVisible && pageTiles.length === 1 && "items-center justify-center",
-          )}
-        >
-          <div
-            className={cn(
-              "mx-auto grid w-full gap-3",
-              stageVisible ? "grid-cols-2 sm:grid-cols-4" : gridClassFor(pageTiles.length),
-            )}
-          >
-            {pageTiles.map(({ id, ...tile }) => (
-              <VideoTile key={id} {...tile} />
-            ))}
-          </div>
-          {call.remotes.length === 0 && (
-            <p className="py-4 text-center text-sm text-white/60">Waiting for other members to join</p>
-          )}
-        </div>
-      </div>
-
-      <Pager page={currentPage} pageCount={pageCount} onChange={setPage} />
+          <Pager page={currentPage} pageCount={pageCount} onChange={setPage} />
+        </>
+      )}
 
       <CallControls
         call={call}

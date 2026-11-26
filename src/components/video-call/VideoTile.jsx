@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ConnectionQuality } from "livekit-client";
-import { MicOff, MonitorUp, SignalLow, WifiOff } from "lucide-react";
+import { Maximize2, MicOff, Minimize2, MonitorUp, SignalLow, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import MemberAvatar from "@/components/groups/MemberAvatar";
 
@@ -88,6 +88,10 @@ function QualityBadge({ quality }) {
  * `videoTrack` is a LiveKit track and is shown with `track.attach()`, which lets adaptive
  * stream size the incoming video to this tile and pause it when the tile is not visible.
  * Audio is not played here; RemoteAudio plays every remote microphone.
+ *
+ * `onToggleExpand` adds a corner button that puts this tile on the main stage (or back
+ * into the grid when `expanded`). It shows on hover, and always on touch screens.
+ * `compact` is for the small tiles beside the stage and the mini call window.
  */
 export default function VideoTile({
   videoTrack = null,
@@ -102,6 +106,9 @@ export default function VideoTile({
   fit = "cover",
   status,
   quality,
+  expanded = false,
+  onToggleExpand,
+  compact = false,
   className,
 }) {
   const videoRef = useRef(null);
@@ -121,7 +128,8 @@ export default function VideoTile({
   return (
     <div
       className={cn(
-        "relative aspect-video overflow-hidden rounded-2xl bg-[hsl(var(--brand-h),24%,14%)]",
+        "group/tile relative aspect-video overflow-hidden bg-[hsl(var(--brand-h),24%,14%)]",
+        compact ? "rounded-xl" : "rounded-2xl",
         isSpeaking && "ring-2 ring-emerald-400",
         className,
       )}
@@ -141,7 +149,10 @@ export default function VideoTile({
 
       {!showVideo && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <MemberAvatar user={user} className="h-20 w-20 text-2xl" />
+          <MemberAvatar
+            user={user}
+            className={compact ? "h-10 w-10 text-sm" : "h-20 w-20 text-2xl"}
+          />
         </div>
       )}
 
@@ -153,13 +164,36 @@ export default function VideoTile({
 
       <QualityBadge quality={quality} />
 
-      <div className="absolute bottom-3 left-3 flex max-w-[calc(100%-1.5rem)] items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-xs text-white">
+      {onToggleExpand && (
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          aria-label={expanded ? `Shrink ${label}` : `Enlarge ${label}`}
+          title={expanded ? "Shrink" : "Enlarge"}
+          className={cn(
+            "absolute left-2 top-2 flex items-center justify-center rounded-full bg-black/55 text-white transition-opacity hover:bg-black/75 focus-visible:opacity-100",
+            compact ? "h-7 w-7" : "h-8 w-8",
+            "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/tile:opacity-100",
+          )}
+        >
+          {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+        </button>
+      )}
+
+      <div
+        className={cn(
+          "absolute flex items-center gap-1.5 rounded-full bg-black/55 text-white",
+          compact
+            ? "bottom-1.5 left-1.5 max-w-[calc(100%-0.75rem)] px-2 py-0.5 text-[11px]"
+            : "bottom-3 left-3 max-w-[calc(100%-1.5rem)] px-2.5 py-1 text-xs",
+        )}
+      >
         {!micOn && !sharing && <MicOff className="h-3.5 w-3.5 shrink-0" />}
         <span className="truncate">{label}</span>
         {sharing && (
           <span className="inline-flex shrink-0 items-center gap-1 text-white/80">
             <MonitorUp className="h-3.5 w-3.5" />
-            Presenting
+            {!compact && "Presenting"}
           </span>
         )}
       </div>

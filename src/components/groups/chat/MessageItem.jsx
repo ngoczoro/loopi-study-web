@@ -2,6 +2,8 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { extractUrls, splitTextWithLinks } from "@/lib/chatLinks";
 import MemberAvatar from "../MemberAvatar";
+import CallMessageCard from "./CallMessageCard";
+import { isCallMessage } from "./callMessages";
 import { formatMessageTime } from "./chatFormat";
 import { FileCard, ImageGrid, LinkPreviewCard } from "./MessageAttachments";
 
@@ -39,12 +41,15 @@ export default function MessageItem({
   onOpenImage,
   onRetry,
   onDiscard,
+  groupId,
+  liveCall = false,
 }) {
   const attachments = message.attachments ?? [];
   const images = attachments.filter((item) => item.kind === "image");
   const files = attachments.filter((item) => item.kind !== "image");
-  const firstUrl = extractUrls(message.content)[0];
-  const hasText = Boolean(message.content?.trim());
+  const callCard = isCallMessage(message);
+  const firstUrl = callCard ? null : extractUrls(message.content)[0];
+  const hasText = !callCard && Boolean(message.content?.trim());
 
   return (
     <div
@@ -83,6 +88,10 @@ export default function MessageItem({
             )}
             <MessageText content={message.content} />
           </div>
+        )}
+
+        {callCard && (
+          <CallMessageCard message={message} groupId={groupId} live={liveCall} />
         )}
 
         {!hasText && !isMine && isFirstInCluster && (

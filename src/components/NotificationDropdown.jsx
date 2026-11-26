@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Bell, Loader2 } from "lucide-react";
+import { Bell, BellRing, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -11,8 +11,34 @@ import {
   getNotificationIcon,
   getNotificationLink,
 } from "@/lib/notificationDisplay";
+import { askNotificationPermission, notificationPermission } from "@/lib/browserNotifications";
 
 const DROPDOWN_PREVIEW_LIMIT = 5;
+
+/**
+ * Offers system notifications (for example "X started a call" while Loopi is in the
+ * background) until the user answers the browser's question once.
+ */
+function DesktopAlertsPrompt() {
+  const [permission, setPermission] = useState(notificationPermission);
+  if (permission !== "default") return null;
+
+  return (
+    <div className="flex items-center gap-2 border-b border-border/50 bg-primary/5 px-3 py-2">
+      <BellRing className="h-4 w-4 shrink-0 text-primary" />
+      <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+        Get a desktop alert when your group starts a call.
+      </p>
+      <button
+        type="button"
+        onClick={async () => setPermission(await askNotificationPermission())}
+        className="shrink-0 rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90"
+      >
+        Turn on
+      </button>
+    </div>
+  );
+}
 
 export function NotificationDropdown() {
   const [open, setOpen] = useState(false);
@@ -82,6 +108,8 @@ export function NotificationDropdown() {
                 </span>
               )}
             </div>
+
+            <DesktopAlertsPrompt />
 
             <div className="max-h-72 overflow-auto">
               {isLoading && (

@@ -22,10 +22,10 @@ const WIDE_SCREEN_QUERY = "(min-width: 1280px)";
 const PAGE_FRAME_CLASS =
   "-m-4 md:-m-6 lg:-m-8 h-[calc(100dvh-3.5rem)] flex overflow-hidden";
 
-function CenterView({ view, group }) {
+function CenterView({ view, group, callActive }) {
   if (view === "resources") return <ResourcesView group={group} />;
   if (view === "tasks") return <ProgressView group={group} />;
-  return <GroupChat key={group.id} group={group} />;
+  return <GroupChat key={group.id} group={group} callActive={callActive} />;
 }
 
 export default function GroupDetail() {
@@ -42,7 +42,6 @@ export default function GroupDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
-  const [callLive, setCallLive] = useState(false);
 
   const requestedView = searchParams.get("view");
   const view = VIEWS.includes(requestedView) ? requestedView : "chat";
@@ -84,25 +83,9 @@ export default function GroupDetail() {
           callCount={callStatus.count}
           meetActive={Boolean(callStatus.meet)}
         />
-        {callLive && view !== "call" && (
-          <button
-            type="button"
-            onClick={() => changeView("call")}
-            className="shrink-0 flex items-center justify-between gap-3 border-b border-border bg-primary/10 px-4 py-2 text-sm"
-          >
-            <span className="inline-flex items-center gap-2 font-medium text-foreground">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              You&apos;re in a group call
-            </span>
-            <span className="font-medium text-primary">Return</span>
-          </button>
-        )}
-        {(view === "call" || callLive) && (
-          <div
-            className={view === "call" ? "flex-1 min-h-0 flex flex-col" : "sr-only"}
-            inert={view === "call" ? undefined : true}
-            aria-hidden={view !== "call"}
-          >
+        {/* The call itself lives in GroupCallProvider: other views show it in the mini window. */}
+        {view === "call" ? (
+          <div className="flex-1 min-h-0 flex flex-col">
             <Suspense
               fallback={
                 <div className="flex flex-1 items-center justify-center">
@@ -110,20 +93,12 @@ export default function GroupDetail() {
                 </div>
               }
             >
-              <GroupCallTab
-                key={group.id}
-                group={group}
-                visible={view === "call"}
-                onLiveChange={setCallLive}
-                onLeft={() => {
-                  setCallLive(false);
-                  changeView("chat");
-                }}
-              />
+              <GroupCallTab key={group.id} group={group} onLeft={() => changeView("chat")} />
             </Suspense>
           </div>
+        ) : (
+          <CenterView view={view} group={group} callActive={callStatus.active} />
         )}
-        {view !== "call" && <CenterView view={view} group={group} />}
       </section>
 
       {infoOpen && (

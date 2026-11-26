@@ -1,21 +1,31 @@
-import { useEffect, useRef } from "react";
+import { createElement, useEffect, useRef } from "react";
+import { Phone } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { selectIsAuthenticated, useAuthStore } from "@/lib/authStore";
 import { isMockEnabled } from "@/mocks/mockUtils";
 import { patchCachedGroup } from "@/hooks/queries/groups";
+import { askNotificationPermission, showSystemNotification } from "@/lib/browserNotifications";
+import { playRingtone, stopRingtone, unlockRingtone } from "@/lib/callRingtone";
+import { invalidateNotifications } from "@/lib/query/invalidate";
 import { queryKeys } from "@/lib/query/queryKeys";
 import { onSocketEvent, subscribeSocketStatus, isSocketConnected } from "@/lib/socket";
 
-const TOAST_DURATION_MS = 10_000;
+const TOAST_DURATION_MS = 30_000;
 
-const isViewingGroup = (groupId) => window.location.pathname === `/groups/${groupId}`;
+/** Already looking at that group's call, so there is nothing to tell. */
+const isOnCallView = (groupId) =>
+  window.location.pathname === `/groups/${groupId}` &&
+  new URLSearchParams(window.location.search).get("view") === "call";
 
 /**
  * Group call start/end, pushed to every member (`call:started` / `call:ended`):
  * keeps the green "in call" dot in the group list current and, unless the member muted
- * the group (`notify: false`), shows a silent toast with a Join button.
+ * the group (`notify: false`), shows a silent toast with a Join button (on every page,
+ * the group's chat included, except its call view), plus a system notification when
+ * Loopi is in the background, and a short ring (not while the user is in a call). The backend also saves a notification
+ * (the bell), which is marked as over when the call ends.
  *
  * Mount once inside the authenticated app shell.
  */
@@ -29,6 +39,17 @@ export function useGroupCallAlerts() {
     navigateRef.current = navigate;
   }, [navigate]);
 
+  // Browsers only allow sound after the user interacted with the page.
+  useEffect(() => {
+    const unlock = () => unlockRingtone();
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
   useEffect(() => {
     if (!isAuthenticated || isMockEnabled()) return undefined;
 
@@ -40,18 +61,33 @@ export function useGroupCallAlerts() {
       if (!groupId) return;
       patchCachedGroup(queryClient, groupId, { callActive: true });
       refreshCall(groupId);
-      if (!event.notify || isViewingGroup(groupId)) return;
+      if (event.notify) invalidateNotifications(queryClient);
+      if (!event.notify || isOnCallView(groupId)) return;
 
       const who = event.startedBy?.fullName ?? "Someone";
-      toast(`${who} started a call`, {
+      const title = `${who} started a call`;
+      const description = event.groupName ? `in ${event.groupName}` : undefined;
+      const join = () => navigateRef.current(`/groups/${groupId}?view=call`);
+      toast(title, {
         id: `group-call-${groupId}`,
-        description: event.groupName ? `in ${event.groupName}` : undefined,
+        description,
+        icon: createElement(Phone, { className: "h-4 w-4 text-emerald-600" }),
         duration: TOAST_DURATION_MS,
         action: {
           label: "Join",
-          onClick: () => navigateRef.current(`/groups/${groupId}?view=call`),
+          onClick: () => {
+            stopRingtone();
+            // A click is the moment browsers allow asking for system notifications.
+            askNotificationPermission().catch(() => {});
+            join();
+          },
         },
+        cancel: { label: "Dismiss", onClick: stopRingtone },
+        onDismiss: stopRingtone,
+        onAutoClose: stopRingtone,
       });
+      playRingtone();
+      showSystemNotification(title, { body: description, tag: `group-call-${groupId}`, onClick: join });
     });
 
     const offEnded = onSocketEvent("call:ended", (event) => {
@@ -59,7 +95,9 @@ export function useGroupCallAlerts() {
       if (!groupId) return;
       patchCachedGroup(queryClient, groupId, { callActive: false });
       refreshCall(groupId);
+      invalidateNotifications(queryClient);
       toast.dismiss(`group-call-${groupId}`);
+      stopRingtone();
     });
 
     // Calls that started or ended while offline show up after a refetch.
