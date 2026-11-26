@@ -572,6 +572,8 @@ function toGroupView(d, group, meId) {
     description: group.description,
     avatarUrl: group.avatarUrl ?? null,
     inviteCode: group.inviteCode,
+    backupMeetUrl: group.backupMeetUrl ?? null,
+    callActive: false,
     owner: mockUserSummary(d, group.ownerId),
     myRole: membership?.role ?? null,
     memberCount: d.members.filter((m) => m.groupId === group.id).length,
@@ -725,6 +727,7 @@ export function updateGroup(groupId, input = {}) {
   }
   if (input.removeAvatar) group.avatarUrl = null;
   else if (input.avatarPreview) group.avatarUrl = input.avatarPreview;
+  if (input.backupMeetUrl !== undefined) group.backupMeetUrl = input.backupMeetUrl || null;
   group.updatedAt = nowIso();
   return toGroupView(d, group, me.userId);
 }

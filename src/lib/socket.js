@@ -11,12 +11,17 @@ import { performTokenRefresh } from "./authTokenRefresh.js";
  *   joinRoom(joinEvent, leaveEvent, payload) — joins now and after every reconnect; returns leave()
  *   isSocketConnected() / subscribeSocketStatus(listener)
  *
- * Event prefixes: `chat:*` for group chat, `call:*` reserved for video call signaling.
+ * Event prefixes: `chat:*` for group chat, `call:status` for who is in a group's video call.
+ * Call media itself goes through LiveKit, not this socket.
  */
 
+// A relative VITE_API_BASE_URL (e.g. "/api/v1" behind the dev proxy) means the same origin.
 const SOCKET_URL =
   import.meta.env.VITE_SOCKET_URL ||
-  new URL(import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api/v1").origin;
+  new URL(
+    import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api/v1",
+    window.location.origin,
+  ).origin;
 
 let socket = null;
 let refreshing = false;

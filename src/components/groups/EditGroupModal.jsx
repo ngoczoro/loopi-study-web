@@ -11,6 +11,8 @@ import GroupModalShell, {
 const NAME_MAX = 100;
 const DESCRIPTION_MAX = 500;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+// Same rule as the backend: meet.google.com/abc-defg-hij, with or without https.
+const MEET_LINK_PATTERN = /^(?:https?:\/\/)?meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}(?:[/?#].*)?$/i;
 
 function readImage(file, onLoad) {
   if (!file.type.startsWith("image/")) {
@@ -108,12 +110,15 @@ function EditGroupForm({ group, mutation, onCancel, onSaved }) {
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(group.avatarUrl ?? null);
   const [removeAvatar, setRemoveAvatar] = useState(false);
+  const [backupMeetUrl, setBackupMeetUrl] = useState(group.backupMeetUrl ?? "");
   const busy = mutation.isPending;
+  const meetLink = backupMeetUrl.trim();
+  const meetLinkInvalid = Boolean(meetLink) && !MEET_LINK_PATTERN.test(meetLink);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     const trimmedName = name.trim();
-    if (!trimmedName || busy) return;
+    if (!trimmedName || busy || meetLinkInvalid) return;
 
     try {
       await mutation.mutateAsync({
@@ -124,6 +129,7 @@ function EditGroupForm({ group, mutation, onCancel, onSaved }) {
           avatarFile,
           avatarPreview: avatarFile ? avatarPreview : undefined,
           removeAvatar,
+          backupMeetUrl: meetLink,
         },
       });
       toast.success("Group updated");
@@ -192,6 +198,33 @@ function EditGroupForm({ group, mutation, onCancel, onSaved }) {
         </p>
       </div>
 
+      <div className="space-y-2">
+        <label htmlFor="edit-group-meet" className="text-sm font-medium text-foreground">
+          Backup Google Meet link <span className="text-muted-foreground">(optional)</span>
+        </label>
+        <input
+          id="edit-group-meet"
+          type="url"
+          inputMode="url"
+          placeholder="https://meet.google.com/abc-defg-hij"
+          value={backupMeetUrl}
+          onChange={(e) => setBackupMeetUrl(e.target.value)}
+          maxLength={300}
+          disabled={busy}
+          aria-invalid={meetLinkInvalid}
+          className={`${groupInputClassName} h-10`}
+        />
+        <p
+          className={
+            meetLinkInvalid ? "text-[11px] text-destructive" : "text-[11px] text-muted-foreground"
+          }
+        >
+          {meetLinkInvalid
+            ? "Use a Google Meet link, for example https://meet.google.com/abc-defg-hij."
+            : "Members are sent here if Loopi calls are down and a new Meet cannot be created."}
+        </p>
+      </div>
+
       {mutation.error && (
         <p className="text-xs text-destructive">{mutation.error.message}</p>
       )}
@@ -207,7 +240,7 @@ function EditGroupForm({ group, mutation, onCancel, onSaved }) {
         </button>
         <button
           type="submit"
-          disabled={busy || !name.trim()}
+          disabled={busy || !name.trim() || meetLinkInvalid}
           className={groupPrimaryButtonClassName}
         >
           {busy ? (

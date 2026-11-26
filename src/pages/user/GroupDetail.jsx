@@ -1,16 +1,19 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useGroup } from "@/hooks/queries/groups";
+import { useGroupCallStatus } from "@/hooks/queries/groupCall";
 import ChatHeader from "@/components/groups/chat/ChatHeader";
 import GroupChat from "@/components/groups/chat/GroupChat";
 import ConversationInfoPanel from "@/components/groups/info/ConversationInfoPanel";
-import GroupCallTab from "@/components/groups/detail/GroupCallTab";
 import ResourcesView from "@/components/groups/resources/ResourcesView";
 import ProgressView from "@/components/groups/progress/ProgressView";
 import EditGroupModal from "@/components/groups/EditGroupModal";
 import InviteMembersModal from "@/components/groups/InviteMembersModal";
 import LeaveGroupDialog from "@/components/groups/LeaveGroupDialog";
+
+// The LiveKit client is large, so it only loads when the call view opens.
+const GroupCallTab = lazy(() => import("@/components/groups/detail/GroupCallTab"));
 
 const VIEWS = ["chat", "tasks", "resources", "call"];
 const WIDE_SCREEN_QUERY = "(min-width: 1280px)";
@@ -19,10 +22,10 @@ const WIDE_SCREEN_QUERY = "(min-width: 1280px)";
 const PAGE_FRAME_CLASS =
   "-m-4 md:-m-6 lg:-m-8 h-[calc(100dvh-3.5rem)] flex overflow-hidden";
 
-function CenterView({ view, group }) {
+function CenterView({ view, group, callActive }) {
   if (view === "resources") return <ResourcesView group={group} />;
   if (view === "tasks") return <ProgressView group={group} />;
-  return <GroupChat key={group.id} group={group} />;
+  return <GroupChat key={group.id} group={group} callActive={callActive} />;
 }
 
 export default function GroupDetail() {
@@ -30,6 +33,7 @@ export default function GroupDetail() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { group, isLoading, error } = useGroup(groupId);
+  const { status: callStatus } = useGroupCallStatus(groupId, { enabled: Boolean(group) });
   const [infoOpen, setInfoOpen] = useState(() => {
     if (typeof window === "undefined") return false;
     if (new URLSearchParams(window.location.search).get("view") === "call") return false;
@@ -38,7 +42,6 @@ export default function GroupDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
-  const [callLive, setCallLive] = useState(false);
 
   const requestedView = searchParams.get("view");
   const view = VIEWS.includes(requestedView) ? requestedView : "chat";
@@ -77,39 +80,25 @@ export default function GroupDetail() {
           onToggleInfo={() => setInfoOpen((open) => !open)}
           onOpenMembers={() => setInfoOpen(true)}
           onChangeView={changeView}
+          callCount={callStatus.count}
+          meetActive={Boolean(callStatus.meet)}
         />
-        {callLive && view !== "call" && (
-          <button
-            type="button"
-            onClick={() => changeView("call")}
-            className="shrink-0 flex items-center justify-between gap-3 border-b border-border bg-primary/10 px-4 py-2 text-sm"
-          >
-            <span className="inline-flex items-center gap-2 font-medium text-foreground">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              You&apos;re in a group call
-            </span>
-            <span className="font-medium text-primary">Return</span>
-          </button>
-        )}
-        {(view === "call" || callLive) && (
-          <div
-            className={view === "call" ? "flex-1 min-h-0 flex flex-col" : "sr-only"}
-            inert={view === "call" ? undefined : true}
-            aria-hidden={view !== "call"}
-          >
-            <GroupCallTab
-              key={group.id}
-              group={group}
-              visible={view === "call"}
-              onLiveChange={setCallLive}
-              onLeft={() => {
-                setCallLive(false);
-                changeView("chat");
-              }}
-            />
+        {/* The call itself lives in GroupCallProvider: other views show it in the mini window. */}
+        {view === "call" ? (
+          <div className="flex-1 min-h-0 flex flex-col">
+            <Suspense
+              fallback={
+                <div className="flex flex-1 items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              }
+            >
+              <GroupCallTab key={group.id} group={group} onLeft={() => changeView("chat")} />
+            </Suspense>
           </div>
+        ) : (
+          <CenterView view={view} group={group} callActive={callStatus.active} />
         )}
-        {view !== "call" && <CenterView view={view} group={group} />}
       </section>
 
       {infoOpen && (

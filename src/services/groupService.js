@@ -37,6 +37,9 @@ export const updateGroup = (groupId, payload) =>
       }
       if (payload.avatarFile) formData.append("avatar", payload.avatarFile);
       if (payload.removeAvatar) formData.append("removeAvatar", "true");
+      if (payload.backupMeetUrl !== undefined) {
+        formData.append("backupMeetUrl", payload.backupMeetUrl ?? "");
+      }
       return api.patch(`/groups/${groupId}`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });

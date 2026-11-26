@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:tunnel": "vite --mode tunnel --port 5174 --strictPort"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.12",
@@ -24,6 +25,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
+    "livekit-client": "^2.25.0",
     "lucide-react": "^1.8.0",
     "pdfjs-dist": "^5.7.284",
     "react": "^19.2.4",

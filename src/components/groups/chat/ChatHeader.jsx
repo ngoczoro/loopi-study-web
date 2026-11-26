@@ -42,8 +42,17 @@ export default function ChatHeader({
   onToggleInfo,
   onOpenMembers,
   onChangeView,
+  callCount = 0,
+  meetActive = false,
 }) {
   const toggleView = (target) => onChangeView(view === target ? "chat" : target);
+  const callLabel = [
+    "Video call",
+    callCount > 0 && `${callCount} ${callCount === 1 ? "person" : "people"} in the call`,
+    meetActive && "the group is on Google Meet",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <header className="h-16 shrink-0 border-b border-border bg-card flex items-center gap-3 px-3 sm:px-4">
@@ -87,8 +96,23 @@ export default function ChatHeader({
       </div>
 
       <div className="flex items-center gap-0.5">
-        <HeaderButton label="Video call" active={view === "call"} onClick={() => onChangeView("call")}>
-          <Video className="h-[18px] w-[18px]" />
+        <HeaderButton label={callLabel} active={view === "call"} onClick={() => onChangeView("call")}>
+          <span className="relative inline-flex">
+            <Video className="h-[18px] w-[18px]" />
+            {callCount > 0 && (
+              <span className="absolute -right-2 -top-2 min-w-4 rounded-full bg-emerald-500 px-1 text-[10px] font-semibold leading-4 text-white">
+                {callCount}
+              </span>
+            )}
+            {meetActive && (
+              <span
+                aria-hidden="true"
+                className="absolute -bottom-2 -right-2.5 rounded-full bg-sky-600 px-1 text-[9px] font-semibold leading-[14px] text-white"
+              >
+                Meet
+              </span>
+            )}
+          </span>
         </HeaderButton>
         <HeaderButton
           label="Reminders & deadlines"

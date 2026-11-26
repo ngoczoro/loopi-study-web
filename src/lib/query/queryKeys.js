@@ -46,6 +46,7 @@ export const queryKeys = {
     goals: (groupId) => ["groups", groupId, "goals"],
     tasks: (groupId, filters = {}) => ["groups", groupId, "tasks", filters],
     progress: (groupId) => ["groups", groupId, "progress"],
+    call: (groupId) => ["groups", groupId, "call"],
   },
   chat: {
     messages: (groupId) => ["chat", groupId, "messages"],

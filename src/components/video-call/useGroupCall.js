@@ -1,34 +1,68 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  ConnectionQuality,
+  DisconnectReason,
+  Room,
+  RoomEvent,
+  Track,
+  VideoPresets,
+  createLocalAudioTrack,
+  createLocalTracks,
+  createLocalVideoTrack,
+} from "livekit-client";
 import { getAuthUser } from "@/lib/authSession";
-import { emitWithAck, onSocketEvent } from "@/lib/socket";
-import { useSocketConnected } from "@/hooks/useSocket";
+import { notifyCallLeft, requestCallToken } from "@/services/groupCallService";
 
 /**
- * Mesh call for one study group.
+ * Group video call on LiveKit (SFU).
  *
- * The new participant offers to people already in the room. Everyone else
- * answers. `call:join` is safe to send again after a reconnect.
+ * 1. Lobby: camera and microphone preview tracks.
+ * 2. Join: `POST /groups/:id/call/token`, connect to LiveKit, publish the preview tracks.
+ * 3. In call: LiveKit forwards one stream per person and picks a quality for each viewer
+ *    (simulcast + adaptive stream + dynacast), so cost per person stays flat as the room grows.
  *
- * Client → server, ack `{ ok, message?, peers? }`:
- *   call:join            { groupId }
- *   call:leave           { groupId }
- *   call:offer           { groupId, to, sdp }
- *   call:answer          { groupId, to, sdp }
- *   call:ice-candidate   { groupId, to, candidate }
- * Server → client:
- *   call:peer-joined     { groupId, user }
- *   call:peer-left       { groupId, userId }
- *   call:offer           { groupId, from, user?, sdp }
- *   call:answer          { groupId, from, sdp }
- *   call:ice-candidate   { groupId, from, candidate }
+ * Remote video must be shown with `track.attach(element)` (see VideoTile): adaptive stream
+ * watches the element's size and visibility, and pauses video nobody is looking at.
  */
 
-const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
+const CAMERA_CAPTURE = { resolution: VideoPresets.h720.resolution, facingMode: "user" };
+
+/** People tiles per page: a 3×3 grid, or one row under a shared screen. */
+export const GRID_PAGE_SIZE = 9;
+export const STAGE_PAGE_SIZE = 4;
+
+/**
+ * Failures of the call system itself. Only these suggest Google Meet; a full room
+ * (CALL_ROOM_FULL) does not, since the rest of the group is still on Loopi.
+ */
+const SYSTEM_FAILURES = new Set([
+  "CALL_NOT_CONFIGURED",
+  "CALL_SERVER_UNAVAILABLE",
+  "CALL_CAPACITY_REACHED",
+  "CALL_CONNECT_FAILED",
+  "CALL_UNSTABLE",
+]);
+const UNSTABLE_DROPS = 3;
+const UNSTABLE_WINDOW_MS = 2 * 60 * 1000;
+const EXPECTED_DISCONNECTS = new Set([
+  DisconnectReason.CLIENT_INITIATED,
+  DisconnectReason.DUPLICATE_IDENTITY,
+  DisconnectReason.PARTICIPANT_REMOVED,
+  DisconnectReason.ROOM_DELETED,
+]);
+
+const failure = (code, message, fallback = null) => ({
+  code: code ?? null,
+  message,
+  fallback,
+  system: SYSTEM_FAILURES.has(code),
+});
 
 export function currentCallUser() {
   const user = getAuthUser();
+  const userId = user?.id ?? user?.userId ?? null;
   return {
-    userId: user?.id ?? user?.userId ?? null,
+    userId: userId == null ? null : String(userId),
     fullName: user?.fullName || "You",
     avatarUrl: user?.avatarUrl ?? null,
   };
@@ -44,204 +78,173 @@ function describeMediaError(error) {
   if (error?.name === "NotSupportedError") {
     return "This browser does not support video calls.";
   }
+  if (error?.name === "NotReadableError") {
+    return "The camera or microphone is being used by another app.";
+  }
   return "Could not open the camera or microphone.";
 }
 
-function describeSignalingFailure(message) {
-  if (
-    !message ||
-    message === "Socket is not connected" ||
-    message === "Socket request timed out"
-  ) {
-    return "The call server is offline, so other members cannot join yet.";
+function describeDisconnect(reason) {
+  switch (reason) {
+    case DisconnectReason.CLIENT_INITIATED:
+      return null;
+    case DisconnectReason.DUPLICATE_IDENTITY:
+      return "You joined this call from another tab or device, so it ended here.";
+    case DisconnectReason.PARTICIPANT_REMOVED:
+      return "You were removed from the call.";
+    case DisconnectReason.ROOM_DELETED:
+      return "The call was closed.";
+    default:
+      return "You were disconnected from the call. Join again to reconnect.";
   }
-  return message;
 }
 
-function videoSender(pc) {
-  return pc.getSenders().find((sender) => sender.track?.kind === "video");
+function parseMetadata(metadata) {
+  if (!metadata) return {};
+  try {
+    const value = JSON.parse(metadata);
+    return value && typeof value === "object" ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+/** A published, unmuted, subscribed track, or null. */
+function liveTrack(participant, source) {
+  const publication = participant.getTrackPublication(source);
+  if (!publication || publication.isMuted || !publication.track) return null;
+  return publication.track;
+}
+
+function snapshotRemote(participant, lastSpokeAt) {
+  const meta = parseMetadata(participant.metadata);
+  return {
+    userId: participant.identity,
+    user: {
+      userId: participant.identity,
+      fullName: participant.name || "Member",
+      avatarUrl: meta.avatarUrl ?? null,
+    },
+    cameraTrack: liveTrack(participant, Track.Source.Camera),
+    screenTrack: liveTrack(participant, Track.Source.ScreenShare),
+    audioTrack: liveTrack(participant, Track.Source.Microphone),
+    micOn: participant.isMicrophoneEnabled,
+    speaking: participant.isSpeaking,
+    lastSpokeAt: lastSpokeAt.get(participant.identity) ?? 0,
+    quality: participant.connectionQuality,
+    connectionState:
+      participant.connectionQuality === ConnectionQuality.Lost ? "reconnecting" : "connected",
+  };
+}
+
+/**
+ * Keeps tiles in a stable order, except that someone who starts speaking outside the
+ * first `slots` positions moves to the front so they are on the first page.
+ */
+function nextOrder(previous, remotes, slots) {
+  const ids = new Set(remotes.map((remote) => remote.userId));
+  const order = previous.filter((id) => ids.has(id));
+  remotes.forEach((remote) => {
+    if (!order.includes(remote.userId)) order.push(remote.userId);
+  });
+
+  const visible = new Set(order.slice(0, slots));
+  const promoted = remotes
+    .filter((remote) => remote.speaking && !visible.has(remote.userId))
+    .sort((a, b) => b.lastSpokeAt - a.lastSpokeAt)
+    .map((remote) => remote.userId);
+  if (promoted.length === 0) return order;
+  return [...promoted, ...order.filter((id) => !promoted.includes(id))];
 }
 
 export function useGroupCall(groupId, { visible = true } = {}) {
-  const socketConnected = useSocketConnected();
   const [phase, setPhase] = useState("lobby");
   const [joining, setJoining] = useState(false);
-  const [localStream, setLocalStream] = useState(null);
-  const [screenStream, setScreenStream] = useState(null);
+  const [localVideoTrack, setLocalVideoTrack] = useState(null);
+  const [localAudioTrack, setLocalAudioTrack] = useState(null);
+  const [localScreenTrack, setLocalScreenTrack] = useState(null);
   const [micEnabled, setMicEnabled] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(true);
-  const [sharing, setSharing] = useState(false);
   const [mediaMessage, setMediaMessage] = useState(null);
-  const [signalingNote, setSignalingNote] = useState(null);
+  const [callError, setCallError] = useState(null);
+  const [callFailure, setCallFailure] = useState(null);
   const [remotes, setRemotes] = useState([]);
   const [startedAt, setStartedAt] = useState(null);
+  const [reconnecting, setReconnecting] = useState(false);
+  const [localSpeaking, setLocalSpeaking] = useState(false);
+  const [localQuality, setLocalQuality] = useState(ConnectionQuality.Unknown);
+  const [audioBlocked, setAudioBlocked] = useState(false);
+  const [maxParticipants, setMaxParticipants] = useState(null);
 
   const mountedRef = useRef(true);
-  const joinedRef = useRef(false);
+  const roomRef = useRef(null);
   const joinLockRef = useRef(false);
   const openingRef = useRef(null);
-  const groupIdRef = useRef(groupId);
-  const localStreamRef = useRef(null);
-  const screenTrackRef = useRef(null);
+  const audioRef = useRef(null);
+  const videoRef = useRef(null);
   const micRef = useRef(true);
   const cameraRef = useRef(true);
-  const peersRef = useRef(new Map());
-  const earlyCandidatesRef = useRef(new Map());
-  const handlersRef = useRef({});
-  const prevSocketRef = useRef(socketConnected);
+  const groupIdRef = useRef(groupId);
+  const lastSpokeAtRef = useRef(new Map());
+  const orderRef = useRef([]);
+  const screenRef = useRef(null);
+  const dropsRef = useRef([]);
 
-  groupIdRef.current = groupId;
+  useEffect(() => {
+    groupIdRef.current = groupId;
+  }, [groupId]);
 
-  const syncRemotes = () => {
-    if (!mountedRef.current) return;
-    setRemotes(
-      [...peersRef.current.values()].map((entry) => ({
-        userId: entry.user.userId,
-        user: entry.user,
-        stream: entry.stream,
-        connectionState: entry.connectionState,
-      })),
+  const setScreen = (track) => {
+    screenRef.current = track;
+    if (mountedRef.current) setLocalScreenTrack(track);
+  };
+
+  const setAudio = (track) => {
+    audioRef.current = track;
+    if (mountedRef.current) setLocalAudioTrack(track);
+  };
+
+  const setVideo = (track) => {
+    videoRef.current = track;
+    if (mountedRef.current) setLocalVideoTrack(track);
+  };
+
+  const stopLocalTracks = () => {
+    audioRef.current?.stop();
+    videoRef.current?.stop();
+    setAudio(null);
+    setVideo(null);
+  };
+
+  const syncRemotes = (room) => {
+    if (!mountedRef.current || roomRef.current !== room) return;
+    const snapshots = [...room.remoteParticipants.values()].map((participant) =>
+      snapshotRemote(participant, lastSpokeAtRef.current),
     );
+    const stage = Boolean(screenRef.current) || snapshots.some((snapshot) => snapshot.screenTrack);
+    // The first page also holds the local tile.
+    const slots = (stage ? STAGE_PAGE_SIZE : GRID_PAGE_SIZE) - 1;
+    orderRef.current = nextOrder(orderRef.current, snapshots, slots);
+    const byId = new Map(snapshots.map((snapshot) => [snapshot.userId, snapshot]));
+    setRemotes(orderRef.current.map((id) => byId.get(id)).filter(Boolean));
   };
 
-  const closeAllPeers = () => {
-    peersRef.current.forEach((entry) => entry.pc.close());
-    peersRef.current.clear();
-    earlyCandidatesRef.current.clear();
-    syncRemotes();
+  const resetToLobby = (message = null) => {
+    setScreen(null);
+    setRemotes([]);
+    setPhase("lobby");
+    setStartedAt(null);
+    setReconnecting(false);
+    setLocalSpeaking(false);
+    setAudioBlocked(false);
+    setCallError(message);
+    lastSpokeAtRef.current.clear();
+    orderRef.current = [];
   };
 
-  const publishTrack = (track) => {
-    const stream = localStreamRef.current ?? new MediaStream();
-    const existing = stream.getTracks().find((item) => item.kind === track.kind);
-    if (existing && existing !== track) {
-      stream.removeTrack(existing);
-      existing.stop();
-    }
-    if (!stream.getTracks().includes(track)) stream.addTrack(track);
-    localStreamRef.current = stream;
-    if (mountedRef.current) setLocalStream(new MediaStream(stream.getTracks()));
-
-    peersRef.current.forEach((entry) => {
-      const sender = entry.pc.getSenders().find((item) => item.track?.kind === track.kind);
-      if (sender && sender.track !== screenTrackRef.current) {
-        sender.replaceTrack(track);
-        return;
-      }
-      if (sender) return;
-      entry.pc.addTrack(track, stream);
-      renegotiate(entry);
-    });
-  };
-
-  const ensurePeer = (user) => {
-    const userId = user.userId;
-    const existing = peersRef.current.get(userId);
-    if (existing) {
-      existing.user = {
-        ...existing.user,
-        ...user,
-        userId,
-        fullName: user.fullName || existing.user.fullName,
-      };
-      return existing;
-    }
-
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    const entry = {
-      user: {
-        userId,
-        fullName: user.fullName || "Member",
-        avatarUrl: user.avatarUrl ?? null,
-      },
-      pc,
-      stream: new MediaStream(),
-      pendingCandidates: [],
-      connectionState: "new",
-    };
-    peersRef.current.set(userId, entry);
-
-    localStreamRef.current?.getTracks().forEach((track) => {
-      if (track.kind === "video" && screenTrackRef.current) return;
-      pc.addTrack(track, localStreamRef.current);
-    });
-    if (screenTrackRef.current) {
-      const sender = videoSender(pc);
-      if (sender) sender.replaceTrack(screenTrackRef.current);
-      else pc.addTrack(screenTrackRef.current);
-    }
-
-    const early = earlyCandidatesRef.current.get(userId) ?? [];
-    earlyCandidatesRef.current.delete(userId);
-    entry.pendingCandidates.push(...early);
-
-    pc.onicecandidate = (event) => {
-      if (!event.candidate || !joinedRef.current) return;
-      emitWithAck("call:ice-candidate", {
-        groupId: groupIdRef.current,
-        to: userId,
-        candidate: event.candidate.toJSON(),
-      });
-    };
-    pc.ontrack = (event) => {
-      const current = peersRef.current.get(userId);
-      if (!current) return;
-      current.stream
-        .getTracks()
-        .filter((track) => track.kind === event.track.kind && track.id !== event.track.id)
-        .forEach((track) => current.stream.removeTrack(track));
-      if (!current.stream.getTrackById(event.track.id)) current.stream.addTrack(event.track);
-      syncRemotes();
-    };
-    pc.onconnectionstatechange = () => {
-      const current = peersRef.current.get(userId);
-      if (!current) return;
-      current.connectionState = pc.connectionState;
-      syncRemotes();
-    };
-
-    syncRemotes();
-    return entry;
-  };
-
-  const flushCandidates = async (entry) => {
-    const queued = entry.pendingCandidates.splice(0);
-    await Promise.all(
-      queued.map((candidate) => entry.pc.addIceCandidate(candidate).catch(() => {})),
-    );
-  };
-
-  async function renegotiate(entry) {
-    if (!joinedRef.current || entry.pc.signalingState !== "stable") return;
-    const offer = await entry.pc.createOffer();
-    if (!joinedRef.current || entry.pc.signalingState !== "stable") return;
-    await entry.pc.setLocalDescription(offer);
-    emitWithAck("call:offer", {
-      groupId: groupIdRef.current,
-      to: entry.user.userId,
-      sdp: entry.pc.localDescription,
-    });
-  }
-
-  const offerToPeers = async (peers) => {
-    const me = currentCallUser().userId;
-    for (const peer of peers) {
-      if (!peer?.userId || peer.userId === me || !joinedRef.current) continue;
-      const entry = ensurePeer(peer);
-      if (entry.pc.signalingState !== "stable") continue;
-      const offer = await entry.pc.createOffer();
-      if (!joinedRef.current) return;
-      await entry.pc.setLocalDescription(offer);
-      emitWithAck("call:offer", {
-        groupId: groupIdRef.current,
-        to: peer.userId,
-        sdp: entry.pc.localDescription,
-      });
-    }
-  };
-
-  const ensureLocalMedia = async () => {
-    if (localStreamRef.current) return localStreamRef.current;
+  /** Opens camera + microphone for the lobby preview. Falls back to microphone only. */
+  const ensurePreview = async () => {
+    if (audioRef.current || videoRef.current) return;
     if (openingRef.current) return openingRef.current;
 
     const request = (async () => {
@@ -251,44 +254,37 @@ export function useGroupCall(groupId, { visible = true } = {}) {
         throw error;
       }
 
-      let stream;
+      let tracks;
       let partial = false;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: { facingMode: "user" },
-        });
+        tracks = await createLocalTracks({ audio: true, video: CAMERA_CAPTURE });
       } catch (error) {
         try {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          tracks = await createLocalTracks({ audio: true, video: false });
           partial = true;
         } catch {
           throw error;
         }
       }
 
-      stream.getAudioTracks().forEach((track) => {
-        track.enabled = micRef.current;
-      });
-      stream.getVideoTracks().forEach((track) => {
-        track.enabled = cameraRef.current;
-      });
-
       if (!mountedRef.current) {
-        stream.getTracks().forEach((track) => track.stop());
-        return null;
+        tracks.forEach((track) => track.stop());
+        return;
       }
 
-      if (!stream.getVideoTracks().length) {
+      const audio = tracks.find((track) => track.kind === Track.Kind.Audio) ?? null;
+      const video = tracks.find((track) => track.kind === Track.Kind.Video) ?? null;
+      if (audio && !micRef.current) await audio.mute();
+      if (video && !cameraRef.current) await video.mute();
+      if (!video) {
         cameraRef.current = false;
         setCameraEnabled(false);
       }
-      localStreamRef.current = stream;
-      setLocalStream(stream);
+      setAudio(audio);
+      setVideo(video);
       setMediaMessage(
         partial ? "Camera is unavailable. You can still join with your microphone." : null,
       );
-      return stream;
     })().finally(() => {
       openingRef.current = null;
     });
@@ -297,226 +293,199 @@ export function useGroupCall(groupId, { visible = true } = {}) {
     return request;
   };
 
-  const stopScreenShare = () => {
-    const track = screenTrackRef.current;
-    screenTrackRef.current = null;
-    track?.stop();
-    if (mountedRef.current) {
-      setScreenStream(null);
-      setSharing(false);
-    }
-    const camera = localStreamRef.current?.getVideoTracks()[0] ?? null;
-    peersRef.current.forEach((entry) => {
-      if (entry.pc.connectionState === "closed") return;
-      const sender = videoSender(entry.pc);
-      if (sender) sender.replaceTrack(camera);
+  const createRoom = () => {
+    const room = new Room({
+      adaptiveStream: true,
+      dynacast: true,
+      videoCaptureDefaults: CAMERA_CAPTURE,
+      publishDefaults: {
+        simulcast: true,
+        videoSimulcastLayers: [VideoPresets.h180, VideoPresets.h360],
+      },
     });
-  };
+    const sync = () => syncRemotes(room);
 
-  const leave = () => {
-    if (joinedRef.current) {
-      joinedRef.current = false;
-      emitWithAck("call:leave", { groupId: groupIdRef.current });
-    }
-    const track = screenTrackRef.current;
-    screenTrackRef.current = null;
-    track?.stop();
-    closeAllPeers();
-    if (!mountedRef.current) return;
-    setScreenStream(null);
-    setSharing(false);
-    setPhase("lobby");
-    setSignalingNote(null);
-    setStartedAt(null);
-  };
+    room
+      .on(RoomEvent.ParticipantConnected, sync)
+      .on(RoomEvent.ParticipantDisconnected, (participant) => {
+        lastSpokeAtRef.current.delete(participant.identity);
+        sync();
+      })
+      .on(RoomEvent.TrackPublished, sync)
+      .on(RoomEvent.TrackUnpublished, sync)
+      .on(RoomEvent.TrackSubscribed, sync)
+      .on(RoomEvent.TrackUnsubscribed, sync)
+      .on(RoomEvent.TrackMuted, sync)
+      .on(RoomEvent.TrackUnmuted, sync)
+      .on(RoomEvent.ParticipantMetadataChanged, sync)
+      .on(RoomEvent.ParticipantNameChanged, sync)
+      .on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+        const now = Date.now();
+        speakers.forEach((speaker) => lastSpokeAtRef.current.set(speaker.identity, now));
+        if (mountedRef.current && roomRef.current === room) {
+          setLocalSpeaking(speakers.some((speaker) => speaker === room.localParticipant));
+        }
+        sync();
+      })
+      .on(RoomEvent.ConnectionQualityChanged, (quality, participant) => {
+        if (participant === room.localParticipant) {
+          if (mountedRef.current) setLocalQuality(quality);
+          return;
+        }
+        sync();
+      })
+      .on(RoomEvent.Reconnecting, () => {
+        if (mountedRef.current) setReconnecting(true);
+      })
+      .on(RoomEvent.Reconnected, () => {
+        if (mountedRef.current) setReconnecting(false);
+        sync();
+      })
+      .on(RoomEvent.AudioPlaybackStatusChanged, () => {
+        if (mountedRef.current) setAudioBlocked(!room.canPlaybackAudio);
+      })
+      .on(RoomEvent.LocalTrackUnpublished, (publication) => {
+        // Also fires when the browser's own "Stop sharing" button is used.
+        if (publication.source !== Track.Source.ScreenShare) return;
+        setScreen(null);
+        sync();
+      })
+      .on(RoomEvent.Disconnected, (reason) => {
+        if (roomRef.current !== room) return;
+        roomRef.current = null;
+        stopLocalTracks();
+        if (!mountedRef.current) return;
+        resetToLobby(describeDisconnect(reason));
 
-  handlersRef.current = {
-    onPeerJoined: ({ groupId: eventGroupId, user }) => {
-      if (eventGroupId !== groupIdRef.current || !joinedRef.current) return;
-      if (!user?.userId || user.userId === currentCallUser().userId) return;
-      ensurePeer(user);
-    },
-    onPeerLeft: ({ groupId: eventGroupId, userId }) => {
-      if (eventGroupId !== groupIdRef.current || !userId) return;
-      peersRef.current.get(userId)?.pc.close();
-      peersRef.current.delete(userId);
-      syncRemotes();
-    },
-    onOffer: async ({ groupId: eventGroupId, from, user, sdp }) => {
-      if (eventGroupId !== groupIdRef.current || !joinedRef.current || !from || !sdp) return;
-      if (from === currentCallUser().userId) return;
-      const entry = ensurePeer(user?.userId ? user : { userId: from, fullName: user?.fullName });
-      const polite = (currentCallUser().userId ?? "") < from;
-      if (entry.pc.signalingState === "have-local-offer") {
-        if (!polite) return;
-        await entry.pc.setLocalDescription({ type: "rollback" });
-      }
-      await entry.pc.setRemoteDescription(sdp);
-      await flushCandidates(entry);
-      const answer = await entry.pc.createAnswer();
-      await entry.pc.setLocalDescription(answer);
-      emitWithAck("call:answer", {
-        groupId: eventGroupId,
-        to: from,
-        sdp: entry.pc.localDescription,
+        if (EXPECTED_DISCONNECTS.has(reason)) return;
+        const now = Date.now();
+        dropsRef.current = [...dropsRef.current, now].filter((at) => now - at < UNSTABLE_WINDOW_MS);
+        if (dropsRef.current.length >= UNSTABLE_DROPS) {
+          setCallFailure(
+            failure("CALL_UNSTABLE", "Your connection to the call keeps dropping."),
+          );
+        }
       });
-    },
-    onAnswer: async ({ groupId: eventGroupId, from, sdp }) => {
-      if (eventGroupId !== groupIdRef.current || !from || !sdp) return;
-      const entry = peersRef.current.get(from);
-      if (!entry || entry.pc.signalingState !== "have-local-offer") return;
-      await entry.pc.setRemoteDescription(sdp);
-      await flushCandidates(entry);
-    },
-    onIce: ({ groupId: eventGroupId, from, candidate }) => {
-      if (eventGroupId !== groupIdRef.current || !from || !candidate) return;
-      const entry = peersRef.current.get(from);
-      if (!entry) {
-        const queued = earlyCandidatesRef.current.get(from) ?? [];
-        queued.push(candidate);
-        earlyCandidatesRef.current.set(from, queued);
-        return;
-      }
-      if (!entry.pc.remoteDescription) {
-        entry.pendingCandidates.push(candidate);
-        return;
-      }
-      entry.pc.addIceCandidate(candidate).catch(() => {});
-    },
+
+    return room;
   };
-
-  useEffect(() => {
-    const forward = (name) => async (payload) => {
-      try {
-        await handlersRef.current[name]?.(payload);
-      } catch {
-        // A bad signaling payload should not take down the call screen.
-      }
-    };
-    const unsubscribe = [
-      onSocketEvent("call:peer-joined", forward("onPeerJoined")),
-      onSocketEvent("call:peer-left", forward("onPeerLeft")),
-      onSocketEvent("call:offer", forward("onOffer")),
-      onSocketEvent("call:answer", forward("onAnswer")),
-      onSocketEvent("call:ice-candidate", forward("onIce")),
-    ];
-    return () => unsubscribe.forEach((stop) => stop());
-  }, []);
-
-  useEffect(() => {
-    if (!visible || phase !== "lobby") return undefined;
-    let cancelled = false;
-    ensureLocalMedia().catch((error) => {
-      if (cancelled || !mountedRef.current) return;
-      setMediaMessage(describeMediaError(error));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [visible, phase]);
-
-  useEffect(() => {
-    const wasConnected = prevSocketRef.current;
-    prevSocketRef.current = socketConnected;
-    if (!joinedRef.current || !socketConnected || wasConnected) return undefined;
-    let cancelled = false;
-    closeAllPeers();
-    emitWithAck("call:join", { groupId: groupIdRef.current }).then((ack) => {
-      if (cancelled || !joinedRef.current) return;
-      if (!ack?.ok) {
-        setSignalingNote(describeSignalingFailure(ack?.message));
-        return;
-      }
-      setSignalingNote(null);
-      const peers = ack.peers ?? ack.data?.peers ?? [];
-      offerToPeers(peers);
-    });
-    return () => {
-      cancelled = true;
-    };
-    // Rejoin only when the socket comes back during an active call.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socketConnected]);
-
-  useEffect(() => {
-    const peers = peersRef.current;
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      if (joinedRef.current) {
-        joinedRef.current = false;
-        emitWithAck("call:leave", { groupId: groupIdRef.current });
-      }
-      peers.forEach((entry) => entry.pc.close());
-      peers.clear();
-      localStreamRef.current?.getTracks().forEach((track) => track.stop());
-      localStreamRef.current = null;
-      screenTrackRef.current?.stop();
-      screenTrackRef.current = null;
-    };
-  }, []);
 
   const join = async () => {
-    if (joinLockRef.current || joinedRef.current) return;
+    if (joinLockRef.current || roomRef.current) return;
     joinLockRef.current = true;
     setJoining(true);
+    setCallError(null);
+    setCallFailure(null);
+    let room = null;
+
     try {
       try {
-        await ensureLocalMedia();
+        await ensurePreview();
       } catch (error) {
         if (mountedRef.current) setMediaMessage(describeMediaError(error));
       }
-      joinedRef.current = true;
-      if (mountedRef.current) {
-        setPhase("in-call");
-        setStartedAt(Date.now());
-      }
-      const ack = await emitWithAck("call:join", { groupId: groupIdRef.current });
-      if (!joinedRef.current || !mountedRef.current) return;
-      if (!ack?.ok) {
-        setSignalingNote(describeSignalingFailure(ack?.message));
+
+      const result = await requestCallToken(groupIdRef.current);
+      if (!mountedRef.current) return;
+      if (!result.success) {
+        const message = result.message || "Could not start the call.";
+        setCallError(message);
+        setCallFailure(
+          failure(result.error?.code, message, result.error?.details?.fallback ?? null),
+        );
         return;
       }
-      setSignalingNote(null);
-      await offerToPeers(ack.peers ?? ack.data?.peers ?? []);
+
+      const { token, url, maxParticipants: limit } = result.data ?? {};
+      room = createRoom();
+      roomRef.current = room;
+      await room.connect(url, token);
+      if (!mountedRef.current || roomRef.current !== room) {
+        room.disconnect();
+        return;
+      }
+
+      if (audioRef.current) {
+        await room.localParticipant.publishTrack(audioRef.current, {
+          source: Track.Source.Microphone,
+        });
+      }
+      // A camera muted in the lobby is stopped (light off); it is published when turned on.
+      if (videoRef.current && cameraRef.current) {
+        await room.localParticipant.publishTrack(videoRef.current, {
+          source: Track.Source.Camera,
+        });
+      }
+
+      setMaxParticipants(limit ?? null);
+      setAudioBlocked(!room.canPlaybackAudio);
+      setPhase("in-call");
+      setStartedAt(Date.now());
+      syncRemotes(room);
+    } catch {
+      if (room && roomRef.current === room) {
+        roomRef.current = null;
+        // Keep the preview tracks so the user can try again.
+        room.disconnect(false);
+      }
+      if (mountedRef.current) {
+        const message = "Could not connect to the call server. Check your connection and try again.";
+        setCallError(message);
+        setCallFailure(failure("CALL_CONNECT_FAILED", message));
+      }
     } finally {
       joinLockRef.current = false;
       if (mountedRef.current) setJoining(false);
     }
   };
 
+  const leave = () => {
+    const room = roomRef.current;
+    roomRef.current = null;
+    room?.disconnect();
+    stopLocalTracks();
+    resetToLobby(null);
+    // Last one out ends the call now. Best effort: the backend's sweep ends it anyway.
+    if (room) notifyCallLeft(groupIdRef.current).catch(() => {});
+  };
+
   const retryDevices = async () => {
-    localStreamRef.current?.getTracks().forEach((track) => track.stop());
-    localStreamRef.current = null;
-    setLocalStream(null);
+    stopLocalTracks();
     setMediaMessage(null);
     micRef.current = true;
     cameraRef.current = true;
     setMicEnabled(true);
     setCameraEnabled(true);
     try {
-      await ensureLocalMedia();
+      await ensurePreview();
     } catch (error) {
       setMediaMessage(describeMediaError(error));
     }
+  };
+
+  const publishIfInCall = async (track, source) => {
+    const room = roomRef.current;
+    if (room) await room.localParticipant.publishTrack(track, { source });
   };
 
   const toggleMic = async () => {
     const next = !micRef.current;
     micRef.current = next;
     setMicEnabled(next);
-    const track = localStreamRef.current?.getAudioTracks()[0];
+    const track = audioRef.current;
     if (track) {
-      track.enabled = next;
+      await (next ? track.unmute() : track.mute()).catch(() => {});
       return;
     }
     if (!next) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      const [audio] = stream.getAudioTracks();
-      if (!audio) return;
-      audio.enabled = true;
-      publishTrack(audio);
+      const created = await createLocalAudioTrack();
+      if (!mountedRef.current) {
+        created.stop();
+        return;
+      }
+      setAudio(created);
+      await publishIfInCall(created, Track.Source.Microphone);
     } catch (error) {
       micRef.current = false;
       setMicEnabled(false);
@@ -528,22 +497,28 @@ export function useGroupCall(groupId, { visible = true } = {}) {
     const next = !cameraRef.current;
     cameraRef.current = next;
     setCameraEnabled(next);
-    const track = localStreamRef.current?.getVideoTracks()[0];
+    const track = videoRef.current;
     if (track) {
-      track.enabled = next;
-      setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
+      // Muting a camera track also turns the camera light off; unmuting reopens it.
+      await (next ? track.unmute() : track.mute()).catch(() => {});
+      const room = roomRef.current;
+      if (next && room && !room.localParticipant.getTrackPublication(Track.Source.Camera)) {
+        await room.localParticipant
+          .publishTrack(track, { source: Track.Source.Camera })
+          .catch(() => setMediaMessage("Could not turn the camera on."));
+      }
       return;
     }
     if (!next) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { facingMode: "user" },
-      });
-      const [video] = stream.getVideoTracks();
-      if (!video) return;
-      video.enabled = true;
-      publishTrack(video);
+      const created = await createLocalVideoTrack(CAMERA_CAPTURE);
+      if (!mountedRef.current) {
+        created.stop();
+        return;
+      }
+      setVideo(created);
+      setMediaMessage(null);
+      await publishIfInCall(created, Track.Source.Camera);
     } catch (error) {
       cameraRef.current = false;
       setCameraEnabled(false);
@@ -552,59 +527,78 @@ export function useGroupCall(groupId, { visible = true } = {}) {
   };
 
   const toggleScreenShare = async () => {
-    if (screenTrackRef.current) {
-      stopScreenShare();
-      return;
-    }
+    const room = roomRef.current;
+    if (!room) return;
+    const sharing = room.localParticipant.isScreenShareEnabled;
     try {
-      const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-      const [track] = display.getVideoTracks();
-      if (!track) return;
-      screenTrackRef.current = track;
-      setScreenStream(display);
-      setSharing(true);
-      track.onended = () => {
-        if (screenTrackRef.current !== track) return;
-        stopScreenShare();
-      };
-      peersRef.current.forEach((entry) => {
-        const sender = videoSender(entry.pc);
-        if (sender) {
-          sender.replaceTrack(track);
-          return;
-        }
-        entry.pc.addTrack(track, display);
-        renegotiate(entry);
+      const publication = await room.localParticipant.setScreenShareEnabled(!sharing, {
+        audio: false,
       });
+      setScreen(!sharing ? (publication?.track ?? null) : null);
+      syncRemotes(room);
     } catch (error) {
       if (error?.name === "NotAllowedError" || error?.name === "AbortError") return;
       setMediaMessage("Could not share the screen.");
     }
   };
 
-  const linkStatus =
-    phase !== "in-call"
-      ? "idle"
-      : signalingNote
-        ? "offline"
-        : socketConnected
-          ? "live"
-          : "reconnecting";
+  const startAudio = async () => {
+    const room = roomRef.current;
+    if (!room) return;
+    await room.startAudio().catch(() => {});
+    if (mountedRef.current) setAudioBlocked(!room.canPlaybackAudio);
+  };
+
+  useEffect(() => {
+    if (!visible || phase !== "lobby") return undefined;
+    let cancelled = false;
+    ensurePreview().catch((error) => {
+      if (cancelled || !mountedRef.current) return;
+      setMediaMessage(describeMediaError(error));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // ensurePreview only reads refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, phase]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const room = roomRef.current;
+      roomRef.current = null;
+      room?.disconnect();
+      audioRef.current?.stop();
+      videoRef.current?.stop();
+      audioRef.current = null;
+      videoRef.current = null;
+    };
+  }, []);
+
+  const linkStatus = phase !== "in-call" ? "idle" : reconnecting ? "reconnecting" : "live";
 
   return {
     phase,
     joining,
-    localStream,
-    screenStream,
+    localVideoTrack,
+    localAudioTrack,
+    localScreenTrack,
     micEnabled,
     cameraEnabled,
-    sharing,
+    sharing: Boolean(localScreenTrack),
     mediaMessage,
-    signalingNote,
+    callError,
+    callFailure,
+    clearCallFailure: () => setCallFailure(null),
     remotes,
     startedAt,
-    socketConnected,
     linkStatus,
+    localSpeaking,
+    localQuality,
+    audioBlocked,
+    maxParticipants,
     me: currentCallUser(),
     join,
     leave,
@@ -612,5 +606,6 @@ export function useGroupCall(groupId, { visible = true } = {}) {
     toggleMic,
     toggleCamera,
     toggleScreenShare,
+    startAudio,
   };
 }
